@@ -3,44 +3,49 @@ import SwiftUI
 @main
 struct MarkdownVaultApp: App {
     @StateObject private var store = VaultStore()
+    @AppStorage(AppAppearance.storageKey) private var appearanceRaw = AppAppearance.defaultValue.rawValue
+    private var appearance: AppAppearance { AppAppearance(rawValue: appearanceRaw) ?? .defaultValue }
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(store)
                 .tint(Theme.accent)
+                #if os(macOS)
+                .onAppear { appearance.apply() }
+                .onChange(of: appearanceRaw) { _, _ in appearance.apply() }
+                #else
+                .preferredColorScheme(appearance.colorScheme)
+                #endif
         }
         #if os(macOS)
-        .defaultSize(width: 1200, height: 760)
-        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1440, height: 880)
         .commands {
-            CommandGroup(after: .newItem) {
-                Button("New Markdown File") { store.requestNewFile() }
+            CommandGroup(replacing: .newItem) {
+                Button("New Page…") { post(.newPage) }
                     .keyboardShortcut("n", modifiers: [.command])
-                Button("Open Vault Folder…") { store.requestOpenVault() }
+                Button("New Subtopic…") { post(.newSubtopic) }
+                    .keyboardShortcut("n", modifiers: [.command, .option])
+                Button("New Topic…") { post(.newTopic) }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                Divider()
+                Button("Open Library Folder…") { store.requestOpenVault() }
                     .keyboardShortcut("o", modifiers: [.command])
-                Button("Quick Open…") {
-                    NotificationCenter.default.post(name: .quickOpen, object: nil)
-                }
-                .keyboardShortcut("p", modifiers: [.command])
-            }
-            CommandMenu("Terminal") {
-                Button("New Terminal") {
-                    NotificationCenter.default.post(name: .newTerminal, object: nil)
-                }
-                .keyboardShortcut("`", modifiers: [.control, .shift])
-                Button("Toggle Terminal Panel") {
-                    NotificationCenter.default.post(name: .toggleTerminal, object: nil)
-                }
-                .keyboardShortcut("`", modifiers: [.control])
             }
             CommandGroup(after: .sidebar) {
-                Button("Toggle Side Bar") {
-                    NotificationCenter.default.post(name: .toggleSidebar, object: nil)
+                Button("Toggle Agent Panel") { post(.toggleAgentPanel) }
+                    .keyboardShortcut("t", modifiers: [.command, .option])
+                Picker("Appearance", selection: $appearanceRaw) {
+                    ForEach(AppAppearance.allCases) { a in
+                        Text(a.title).tag(a.rawValue)
+                    }
                 }
-                .keyboardShortcut("b", modifiers: [.command])
             }
         }
         #endif
+    }
+
+    private func post(_ name: Notification.Name) {
+        NotificationCenter.default.post(name: name, object: nil)
     }
 }

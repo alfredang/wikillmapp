@@ -19,12 +19,12 @@ struct AboutView: View {
                 // App card
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 12) {
-                        Image(systemName: "doc.text.fill")
+                        Image(systemName: "books.vertical.fill")
                             .font(.title)
                             .foregroundStyle(Theme.accent)
-                        Text("Markdown Vault").font(.title3.bold())
+                        Text("Tertiary Markdown").font(.title3.bold())
                     }
-                    Text("A native Markdown notes app for Mac, iPad and iPhone. Open any local folder — fully compatible with your Obsidian vault — and write with live preview, embedded images, and clean tables.")
+                    Text("A knowledge-building app for Mac, iPad and iPhone. Organise topics and subtopics as folders of self-contained HTML pages — like Claude artifacts — and let the Claude Code agent research, write and maintain them as an LLM wiki.")
                         .foregroundStyle(Theme.mutedInk)
                 }
                 .appCard()
@@ -52,7 +52,7 @@ struct AboutView: View {
                 }
                 .appCard()
 
-                Text("Markdown Vault stores your notes as plain `.md` files on your device. Your content never leaves your Mac, iPad or iPhone.")
+                Text("Your topics are plain HTML files in a folder on your device (Documents/Tertiary Topics by default). Nothing is locked in a proprietary store.")
                     .font(.footnote)
                     .foregroundStyle(Theme.mutedInk)
             }

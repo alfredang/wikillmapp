@@ -3,12 +3,12 @@ import SwiftUI
 struct RootView: View {
     var body: some View {
         #if os(macOS)
-        VSCodeLayout()
+        TopicsRootView()
             .tint(Theme.accent)
         #else
         TabView {
             VaultView()
-                .tabItem { Label("Vault", systemImage: "folder.fill") }
+                .tabItem { Label("Topics", systemImage: "books.vertical.fill") }
             FeedbackView()
                 .tabItem { Label("Feedback", systemImage: "bubble.left.and.bubble.right.fill") }
             AboutView()

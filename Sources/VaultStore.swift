@@ -4,14 +4,26 @@ import UniformTypeIdentifiers
 import CoreServices   // FSEvents — live folder watching
 #endif
 
-/// Owns the currently-open Obsidian-compatible vault (a local folder), its file tree,
-/// the selected file, and all file-system CRUD. Persists the vault via a security-scoped
-/// bookmark so it re-opens on next launch.
+/// Owns the open Topics library (a local folder — see `TopicLibrary`), its file tree, the
+/// selected topic / sub-topic / page, and all file-system CRUD. Persists the library via a
+/// bookmark so it re-opens on next launch; a fresh install opens `TopicLibrary.defaultURL`.
 @MainActor
 final class VaultStore: ObservableObject {
     @Published var rootURL: URL?
     @Published var rootNode: FileNode?
     @Published var selectedFileURL: URL?
+    /// Bumped on every tree refresh (including live FSEvents refreshes), so views showing a
+    /// file can notice it changed on disk — e.g. when the agent rewrites a page.
+    @Published private(set) var revision = 0
+    /// Obsidian-style link graph of the library (backlinks, `[[wikilinks]]`, hover previews).
+    /// Rebuilt in the background after each refresh.
+    @Published private(set) var links = LinkIndex()
+    private var linkTask: Task<Void, Never>?
+
+    /// Sidebar tag search: results carry every selected tag and, when text is typed, a tag
+    /// containing that text.
+    @Published var tagQuery = ""
+    @Published var selectedTags: Set<String> = []
 
     /// Toggles wired to menu commands / toolbar on macOS.
     @Published var openVaultRequested = false
@@ -34,9 +46,10 @@ final class VaultStore: ObservableObject {
     @Published private var displayNames: [String: String] = [:]
 
     private enum Keys {
-        static let bookmark = "vault.bookmark"
+        // A new key for the Topics library, so the first launch after the Markdown→HTML
+        // revamp opens the library instead of an old Markdown vault.
+        static let bookmark = "library.bookmark"
         static let showHidden = "settings.showHidden"
-        static let onboarded = "vault.onboarded"
         static let sortAsc = "settings.sortAscending"
         static let recents = "vault.recents"
         static let displayNames = "vault.displayNames"
@@ -63,11 +76,18 @@ final class VaultStore: ObservableObject {
         if url.startAccessingSecurityScopedResource() {
             accessing = url
         }
+        TopicLibrary.seed(url)
+        clearTagFilter()
         rootURL = url
         saveBookmark(for: url)
         addRecent(url)
         refresh()
         startWatching(url)
+    }
+
+    /// Opens (creating and seeding when needed) the default library folder.
+    func openDefaultLibrary() {
+        openVault(at: TopicLibrary.defaultURL)
     }
 
     /// Add a folder to the top of the recent-vaults list (deduped, capped).
@@ -83,32 +103,23 @@ final class VaultStore: ObservableObject {
         UserDefaults.standard.set(recentVaults.map(\.path), forKey: Keys.recents)
     }
 
-    /// Copy the bundled sample vault into the app's Documents directory (writable, no
-    /// security scope needed) and open it. Great for first-run and trying the app.
-    func openSampleVault() {
-        guard let bundled = Bundle.main.url(forResource: "SampleVault", withExtension: nil) else { return }
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let dest = docs.appendingPathComponent("Sample Vault", isDirectory: true)
-        if !FileManager.default.fileExists(atPath: dest.path) {
-            try? FileManager.default.copyItem(at: bundled, to: dest)
-        }
-        stopAccessing()
-        rootURL = dest
-        saveBookmark(for: dest)
-        addRecent(dest)
-        refresh()
-        startWatching(dest)
-        selectedFileURL = dest.appendingPathComponent("Welcome.md")
-    }
-
     func restoreVaultIfNeeded() {
         guard rootURL == nil else { return }
-        // First-ever launch with no saved vault: seed the sample vault for onboarding.
-        if UserDefaults.standard.data(forKey: Keys.bookmark) == nil {
-            if !UserDefaults.standard.bool(forKey: Keys.onboarded) {
-                UserDefaults.standard.set(true, forKey: Keys.onboarded)
-                openSampleVault()
-            }
+        #if DEBUG
+        // `-debugLibrary <path>` opens a throwaway library for UI checks, leaving the saved
+        // library and the recents list alone.
+        if let path = UserDefaults.standard.string(forKey: "debugLibrary") {
+            let url = URL(fileURLWithPath: path, isDirectory: true)
+            TopicLibrary.seed(url)
+            rootURL = url
+            refresh()
+            startWatching(url)
+            return
+        }
+        #endif
+        // No saved library yet: open (and seed) the default one.
+        guard UserDefaults.standard.data(forKey: Keys.bookmark) != nil else {
+            openDefaultLibrary()
             return
         }
         guard let data = UserDefaults.standard.data(forKey: Keys.bookmark) else { return }
@@ -125,7 +136,11 @@ final class VaultStore: ObservableObject {
                 break
             }
         }
-        guard let url = resolved else { return }
+        guard let url = resolved, FileManager.default.fileExists(atPath: url.path) else {
+            openDefaultLibrary()
+            return
+        }
+        TopicLibrary.seed(url)
         if url.startAccessingSecurityScopedResource() {
             accessing = url
         }
@@ -168,7 +183,7 @@ final class VaultStore: ObservableObject {
     }
 
     var vaultName: String {
-        guard let rootURL else { return "No Vault" }
+        guard let rootURL else { return "No Library" }
         return displayNames[rootURL.path] ?? rootURL.lastPathComponent
     }
 
@@ -197,6 +212,153 @@ final class VaultStore: ObservableObject {
     func refresh() {
         guard let rootURL else { rootNode = nil; return }
         rootNode = buildNode(at: rootURL, isRoot: true)
+        revision &+= 1
+        rebuildLinks(root: rootURL)
+    }
+
+    private func rebuildLinks(root: URL) {
+        linkTask?.cancel()
+        linkTask = Task { [weak self] in
+            let index = await Task.detached(priority: .utility) { LinkIndex.build(root: root) }.value
+            guard !Task.isCancelled, let self, self.rootURL == root else { return }
+            self.links = index
+        }
+    }
+
+    /// The topic folders (top-level directories of the library).
+    var topics: [FileNode] { rootNode?.children ?? [] }
+
+    // MARK: - Sidebar labels and order
+
+    /// Sidebar name of a node. A page shows its `<title>` with trailing segments that only
+    /// repeat where it lives dropped: `"Scenario 5 · Claude Code for CI · CCAR-F"` in
+    /// `06 Exam Scenarios/` shows as `"Scenario 5 · Claude Code for CI"`. Pages without a
+    /// title, folders and other files keep `displayName`.
+    func sidebarLabel(for node: FileNode) -> String {
+        guard node.isHTML, let title = links.pages[node.url.standardizedFileURL]?.title else { return node.displayName }
+        var parts = title.components(separatedBy: " · ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let context = contextNames(for: node.url)
+        while parts.count > 1, let last = parts.last, context.contains(LinkIndex.normalize(last)) {
+            parts.removeLast()
+        }
+        return parts.isEmpty ? node.displayName : parts.joined(separator: " · ")
+    }
+
+    /// Children in sidebar order: folders first (by name, so "NN " prefixes order them),
+    /// then files by their sidebar label in natural order ("Scenario 2" before "Scenario 10").
+    func sidebarChildren(of node: FileNode) -> [FileNode] {
+        let kids = node.children ?? []
+        let folders = kids.filter(\.isDirectory)
+        let files = kids.filter { !$0.isDirectory }
+            .map { (node: $0, label: sidebarLabel(for: $0)) }
+            .sorted { lhs, rhs in
+                let order = lhs.label.localizedStandardCompare(rhs.label)
+                if order == .orderedSame { return lhs.node.name < rhs.node.name }
+                return sortAscending ? order == .orderedAscending : order == .orderedDescending
+            }
+            .map(\.node)
+        return folders + files
+    }
+
+    /// Normalized names of the folders a page sits in, up to its topic: each folder's name,
+    /// its name without the "NN " prefix, and the first segment of its index page's title.
+    private func contextNames(for url: URL) -> Set<String> {
+        guard let root = rootURL?.standardizedFileURL.path else { return [] }
+        var names = Set<String>()
+        var dir = url.standardizedFileURL.deletingLastPathComponent()
+        while dir.path.hasPrefix(root), dir.path != root {
+            let name = dir.lastPathComponent
+            names.insert(LinkIndex.normalize(name))
+            names.insert(LinkIndex.normalize(TopicLibrary.prettyFolderName(name)))
+            let index = dir.appendingPathComponent(TopicLibrary.indexFile).standardizedFileURL
+            if let first = links.pages[index]?.title.components(separatedBy: " · ").first {
+                names.insert(LinkIndex.normalize(first))
+            }
+            dir = dir.deletingLastPathComponent()
+        }
+        return names
+    }
+
+    // MARK: - Tags
+
+    private var normalizedTagQuery: String { PageTags.normalize(tagQuery) }
+
+    var isFilteringByTag: Bool { !selectedTags.isEmpty || !normalizedTagQuery.isEmpty }
+
+    /// Chips to offer: tags matching the typed text, plus selected ones so they can always be
+    /// turned off, even after their last page loses the tag.
+    var visibleTags: [LinkIndex.TagCount] {
+        let query = normalizedTagQuery
+        var tags = links.tagList.filter {
+            query.isEmpty || $0.tag.contains(query) || selectedTags.contains($0.tag)
+        }
+        let listed = Set(tags.map(\.tag))
+        tags += selectedTags.subtracting(listed).map { LinkIndex.TagCount(tag: $0, count: 0) }
+        return tags.sorted { $0.tag.localizedStandardCompare($1.tag) == .orderedAscending }
+    }
+
+    /// Pages matching the tag search, with each topic ahead of the pages inside it.
+    var tagResults: [LinkIndex.Page] {
+        let query = normalizedTagQuery
+        return links.pages.values
+            .filter { page in
+                selectedTags.allSatisfy(page.tags.contains)
+                    && !page.tags.isEmpty
+                    && (query.isEmpty || page.tags.contains { $0.contains(query) })
+            }
+            .map { (page: $0, path: relativePath(nodeURL(forPage: $0.url))) }
+            .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+            .map(\.page)
+    }
+
+    /// What a page's row selects: a folder stands for its `index.html`.
+    func nodeURL(forPage url: URL) -> URL {
+        url.lastPathComponent.lowercased() == TopicLibrary.indexFile ? url.deletingLastPathComponent() : url
+    }
+
+    func toggleTag(_ tag: String) {
+        if selectedTags.remove(tag) == nil { selectedTags.insert(tag) }
+    }
+
+    /// Replaces the search with one tag.
+    func showTag(_ tag: String) {
+        tagQuery = ""
+        selectedTags = [tag]
+    }
+
+    func clearTagFilter() {
+        tagQuery = ""
+        selectedTags = []
+    }
+
+    /// Pages the app has indexed and may write to (not `_template.html` or `raw/` sources).
+    func canTag(_ page: URL) -> Bool {
+        guard let rootURL, links.pages[page.standardizedFileURL] != nil else { return false }
+        return !TopicLibrary.isSource(page, root: rootURL)
+    }
+
+    /// Adds a comma-separated list of tags. Reads the file first, so a page the agent just
+    /// changed keeps its current tags.
+    func addTags(_ list: String, to page: URL) {
+        let html = loadText(page)
+        guard !html.isEmpty else { return }
+        writeTags(PageTags.read(from: html) + PageTags.parseList(list), to: page, html: html)
+    }
+
+    func removeTag(_ tag: String, from page: URL) {
+        let html = loadText(page)
+        guard !html.isEmpty else { return }
+        writeTags(PageTags.read(from: html).filter { $0 != tag }, to: page, html: html)
+    }
+
+    private func writeTags(_ tags: [String], to page: URL, html: String) {
+        let updated = PageTags.write(tags, to: html)
+        guard updated != html else { return }
+        save(updated, to: page)
+        links.setTags(PageTags.read(from: updated), for: page)
+        refresh()
     }
 
     // MARK: - Live folder watching (auto-sync)
@@ -263,6 +425,15 @@ final class VaultStore: ObservableObject {
                 // Show every file type (only the hidden-files toggle filters dotfiles).
                 // Non-editable files still open to a graceful "Unsupported File" view.
                 .filter { showHiddenFiles || !$0.lastPathComponent.hasPrefix(".") }
+                .filter { child in
+                    let name = child.lastPathComponent
+                    let childIsDir = (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                    // The library root lists topics only (folders); CLAUDE.md, the template
+                    // and `_`-prefixed helpers stay out of the sidebar.
+                    if isRoot { return childIsDir && !name.hasPrefix("_") && !name.hasPrefix(".") }
+                    // A folder's index.html is the folder itself (selecting the folder opens it).
+                    return name.lowercased() != TopicLibrary.indexFile
+                }
                 .map { buildNode(at: $0) }
                 .sorted { lhs, rhs in
                     if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory && !rhs.isDirectory }
@@ -338,6 +509,101 @@ final class VaultStore: ObservableObject {
             refresh()
             return dest
         } catch { return nil }
+    }
+
+    // MARK: - Topics, sub-topics, pages
+
+    /// Selects a file or folder, normalising `…/index.html` to its folder (the folder row
+    /// stands for its overview page). Used by in-page links and the agent.
+    func select(_ url: URL) {
+        var target = url.standardizedFileURL
+        if target.lastPathComponent.lowercased() == TopicLibrary.indexFile {
+            target = target.deletingLastPathComponent()
+        }
+        guard FileManager.default.fileExists(atPath: target.path) else { return }
+        selectedFileURL = target
+    }
+
+    func isDirectory(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+    }
+
+    /// The page shown for a selection: the file itself, or a folder's `index.html` if any.
+    func pageURL(for url: URL) -> URL? {
+        guard isDirectory(url) else { return url }
+        let index = url.appendingPathComponent(TopicLibrary.indexFile)
+        return FileManager.default.fileExists(atPath: index.path) ? index : nil
+    }
+
+    /// The topic folder that contains `url` (or `url` itself when it is a topic).
+    func topicURL(for url: URL?) -> URL? {
+        guard let rootURL, let url else { return nil }
+        return TopicLibrary.folderChain(root: rootURL, to: isDirectory(url) ? url : url.deletingLastPathComponent()).first
+    }
+
+    /// Path relative to the library root, e.g. `CCAR-F/01 Agents/agent-loop.html`.
+    func relativePath(_ url: URL) -> String {
+        guard let root = rootURL?.standardizedFileURL.path else { return url.path }
+        let path = url.standardizedFileURL.path
+        guard path.hasPrefix(root) else { return path }
+        return String(path.dropFirst(root.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    func modificationDate(_ url: URL) -> Date? {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    }
+
+    /// New topic at the library root: `index.html`, `log.md` and an empty `raw/`.
+    @discardableResult
+    func createTopic(named rawName: String) -> URL? {
+        guard let rootURL else { return nil }
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return nil }
+        let dir = uniqueURL(in: rootURL, name: name)
+        let fm = FileManager.default
+        do {
+            try fm.createDirectory(at: dir.appendingPathComponent(TopicLibrary.sourcesFolder), withIntermediateDirectories: true)
+            try TopicLibrary.topicIndexHTML(root: rootURL, title: dir.lastPathComponent)
+                .write(to: dir.appendingPathComponent(TopicLibrary.indexFile), atomically: true, encoding: .utf8)
+            try TopicLibrary.logMarkdown(topic: dir.lastPathComponent)
+                .write(to: dir.appendingPathComponent(TopicLibrary.logFile), atomically: true, encoding: .utf8)
+        } catch { return nil }
+        refresh()
+        selectedFileURL = dir
+        return dir
+    }
+
+    /// New sub-topic folder (with an overview `index.html`) inside `parent`.
+    @discardableResult
+    func createSubtopic(named rawName: String, in parent: URL) -> URL? {
+        guard let rootURL else { return nil }
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return nil }
+        let dir = uniqueURL(in: parent, name: name)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try TopicLibrary.folderIndexHTML(root: rootURL, folder: dir)
+                .write(to: dir.appendingPathComponent(TopicLibrary.indexFile), atomically: true, encoding: .utf8)
+        } catch { return nil }
+        refresh()
+        selectedFileURL = dir
+        return dir
+    }
+
+    /// New HTML page from the library template inside `folder`.
+    @discardableResult
+    func createPage(titled rawTitle: String, in folder: URL) -> URL? {
+        guard let rootURL else { return nil }
+        var title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if title.isEmpty { title = "Untitled" }
+        let url = uniqueURL(in: folder, name: TopicLibrary.slug(title) + ".html")
+        do {
+            try TopicLibrary.pageHTML(root: rootURL, folder: folder, title: title)
+                .write(to: url, atomically: true, encoding: .utf8)
+        } catch { return nil }
+        refresh()
+        selectedFileURL = url
+        return url
     }
 
     private func uniqueURL(in dir: URL, name: String) -> URL {

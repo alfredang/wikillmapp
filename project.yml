@@ -22,7 +22,7 @@ settings:
 packages:
   SwiftTerm:
     url: https://github.com/migueldeicaza/SwiftTerm
-    from: "1.2.0"
+    exactVersion: 1.11.2
 
 targets:
   MarkdownVault:
@@ -33,7 +33,7 @@ targets:
       macOS: "14.0"
     sources:
       - Sources
-      - path: Resources/SampleVault
+      - path: Resources/LibraryTemplate
         type: folder
     dependencies:
       - package: SwiftTerm

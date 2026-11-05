@@ -1,7 +1,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The main two-pane vault browser: file/folder tree on the left, editor/preview on the right.
+/// iPhone / iPad Topics browser: topics, subtopics and pages on the left; the selected HTML
+/// page (rendered like an artifact) or Markdown file on the right.
 struct VaultView: View {
     @EnvironmentObject var store: VaultStore
     @State private var showImporter = false
@@ -34,14 +35,17 @@ struct VaultView: View {
         .onChange(of: store.openVaultRequested) { _, v in if v { showImporter = true; store.openVaultRequested = false } }
         .onChange(of: store.newFileRequested) { _, v in if v { startNewFile(); store.newFileRequested = false } }
         // New file / folder dialogs
-        .alert("New Markdown File", isPresented: $showNewFile) {
-            TextField("Name", text: $newName)
-            Button("Create") { store.createFile(named: newName) }
+        .alert("New Page", isPresented: $showNewFile) {
+            TextField("Title", text: $newName)
+            Button("Create") { if let dir = topicFolder { store.createPage(titled: newName, in: dir) } }
             Button("Cancel", role: .cancel) { }
-        } message: { Text("Created in \(store.targetDirectory()?.lastPathComponent ?? store.vaultName)") }
-        .alert("New Folder", isPresented: $showNewFolder) {
+        } message: { Text("An HTML page in \(topicFolder?.lastPathComponent ?? "the selected topic")") }
+        .alert(topicFolder == nil ? "New Topic" : "New Subtopic", isPresented: $showNewFolder) {
             TextField("Name", text: $newName)
-            Button("Create") { store.createFolder(named: newName) }
+            Button("Create") {
+                if let dir = topicFolder { store.createSubtopic(named: newName, in: dir) }
+                else { store.createTopic(named: newName) }
+            }
             Button("Cancel", role: .cancel) { }
         }
         .alert("Rename", isPresented: Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } })) {
@@ -58,9 +62,20 @@ struct VaultView: View {
             emptyVault
         } else {
             List(selection: $store.selectedFileURL) {
-                if let children = store.rootNode?.children {
+                if store.isFilteringByTag {
+                    let results = store.tagResults
+                    Section("\(results.count) tagged") {
+                        if results.isEmpty {
+                            Text("Nothing has these tags.")
+                                .font(.callout).foregroundStyle(Theme.mutedInk)
+                        }
+                        ForEach(results, id: \.url) { page in
+                            TagResultRow(page: page).tag(store.nodeURL(forPage: page.url))
+                        }
+                    }
+                } else if let children = store.rootNode?.children {
                     if children.isEmpty {
-                        Text("This vault is empty.\nUse + to create a note.")
+                        Text("No topics yet.\nUse + to create a topic.")
                             .font(.callout).foregroundStyle(Theme.mutedInk)
                     }
                     OutlineGroup(children, id: \.id, children: \.children) { node in
@@ -69,6 +84,7 @@ struct VaultView: View {
                 }
             }
             .listStyle(.sidebar)
+            .safeAreaInset(edge: .top, spacing: 0) { TagFilterBar() }
             .toolbar { sidebarToolbar }
         }
     }
@@ -76,11 +92,12 @@ struct VaultView: View {
     @ViewBuilder
     private func nodeLabel(_ node: FileNode) -> some View {
         if node.isDirectory {
-            Label(node.name, systemImage: node.systemImage)
+            Label(node.displayName, systemImage: node.systemImage)
                 .foregroundStyle(Theme.accent)
+                .tag(node.url)
                 .contextMenu { nodeMenu(node) }
         } else {
-            Label(node.name, systemImage: node.systemImage)
+            Label(node.displayName, systemImage: node.systemImage)
                 .tag(node.url)
                 .contextMenu { nodeMenu(node) }
         }
@@ -89,8 +106,8 @@ struct VaultView: View {
     @ViewBuilder
     private func nodeMenu(_ node: FileNode) -> some View {
         if node.isDirectory {
-            Button { store.selectedFileURL = node.url; startNewFile() } label: { Label("New File Here", systemImage: "doc.badge.plus") }
-            Button { store.selectedFileURL = node.url; startNewFolder() } label: { Label("New Folder Here", systemImage: "folder.badge.plus") }
+            Button { store.selectedFileURL = node.url; startNewFile() } label: { Label("New Page Here", systemImage: "doc.badge.plus") }
+            Button { store.selectedFileURL = node.url; startNewFolder() } label: { Label("New Subtopic Here", systemImage: "folder.badge.plus") }
             Divider()
         }
         Button { renameTarget = node.url; renameText = node.name } label: { Label("Rename", systemImage: "pencil") }
@@ -101,10 +118,13 @@ struct VaultView: View {
     private var sidebarToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
             Menu {
-                Button { startNewFile() } label: { Label("New File", systemImage: "doc.badge.plus") }
-                Button { startNewFolder() } label: { Label("New Folder", systemImage: "folder.badge.plus") }
+                Button { store.selectedFileURL = nil; startNewFolder() } label: { Label("New Topic", systemImage: "books.vertical") }
+                if topicFolder != nil {
+                    Button { startNewFolder() } label: { Label("New Subtopic", systemImage: "folder.badge.plus") }
+                    Button { startNewFile() } label: { Label("New Page", systemImage: "doc.badge.plus") }
+                }
                 Divider()
-                Button { showImporter = true } label: { Label("Open Vault…", systemImage: "folder") }
+                Button { showImporter = true } label: { Label("Open Library Folder…", systemImage: "folder") }
                 Button { store.refresh() } label: { Label("Refresh", systemImage: "arrow.clockwise") }
             } label: {
                 Image(systemName: "plus")
@@ -117,9 +137,9 @@ struct VaultView: View {
             Image(systemName: "folder.badge.questionmark")
                 .font(.system(size: 52))
                 .foregroundStyle(Theme.accent)
-            Text("Open a Vault")
+            Text("Open a Library")
                 .font(.title2.bold())
-            Text("Choose any local folder of Markdown files — fully compatible with your Obsidian vault.")
+            Text("Choose a folder to hold your topics — each topic is a folder of HTML pages.")
                 .font(.callout)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Theme.mutedInk)
@@ -133,9 +153,9 @@ struct VaultView: View {
             .buttonStyle(.borderedProminent)
 
             Button {
-                store.openSampleVault()
+                store.openDefaultLibrary()
             } label: {
-                Label("Open Sample Vault", systemImage: "sparkles")
+                Label("Use Default Library", systemImage: "books.vertical")
             }
             .buttonStyle(.bordered)
         }
@@ -147,10 +167,32 @@ struct VaultView: View {
     // MARK: - Detail
     @ViewBuilder
     private var detail: some View {
-        if let url = store.selectedFileURL {
+        if let selected = store.selectedFileURL {
+            let url = store.pageURL(for: selected) ?? selected
             let node = FileNode(url: url, name: url.lastPathComponent,
-                                isDirectory: false, children: nil)
-            if node.isEditable {
+                                isDirectory: store.isDirectory(url), children: nil)
+            if node.isHTML {
+                VStack(spacing: 0) {
+                    if store.canTag(url) {
+                        PageTagBar(page: url).id(url)
+                        Divider()
+                    }
+                    HTMLPageView(url: url,
+                                 readAccessURL: store.rootURL ?? url.deletingLastPathComponent(),
+                                 revision: store.modificationDate(url),
+                                 linkScript: store.links.script(for: url),
+                                 onOpenLocal: { store.select($0) })
+                        .ignoresSafeArea(edges: .bottom)
+                }
+                    .navigationTitle(node.displayName)
+                    #if os(iOS)
+                    .navigationBarTitleDisplayMode(.inline)
+                    #endif
+            } else if node.isDirectory {
+                ContentUnavailableView(node.displayName,
+                                       systemImage: "folder",
+                                       description: Text("This folder has no overview page yet. Pick a page from the sidebar."))
+            } else if node.isEditable {
                 MarkdownEditorView(url: url)
                     .id(url)
             } else if node.isImage {
@@ -161,10 +203,16 @@ struct VaultView: View {
                                        description: Text(url.lastPathComponent))
             }
         } else {
-            ContentUnavailableView("No File Selected",
-                                   systemImage: "doc.text",
-                                   description: Text("Pick a note from the sidebar, or create a new one."))
+            ContentUnavailableView("No Page Selected",
+                                   systemImage: "books.vertical",
+                                   description: Text("Pick a topic or page from the sidebar, or create a new one."))
         }
+    }
+
+    /// The folder new pages and subtopics go into (nil at the library root → new topic).
+    private var topicFolder: URL? {
+        guard let sel = store.selectedFileURL, store.topicURL(for: sel) != nil else { return nil }
+        return store.isDirectory(sel) ? sel : sel.deletingLastPathComponent()
     }
 
     // MARK: - Dialog launchers

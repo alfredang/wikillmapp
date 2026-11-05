@@ -1,10 +1,10 @@
-# Markdown Vault
+# Tertiary Markdown
 
-A **native Markdown notes app for Mac, iPad, and iPhone** that manages files and folders the way
-[Obsidian](https://obsidian.md) does — open *any* local folder and your notes stay as plain `.md`
-files on disk. On the Mac it presents a **VS Code-style workspace** — activity bar, explorer,
-editor, and **embedded terminals** — with a live Edit · Split · Preview editor, slash commands,
-interactive todos, and an **extension marketplace** (including an LLM-powered Wiki).
+A **native knowledge-building app for Mac, iPad and iPhone**. Knowledge lives in a **Topics
+library**: a plain folder whose sub-folders are topics, each holding numbered subtopics and
+self-contained **HTML pages**. On the Mac, **Claude Code** writes and maintains those pages as an
+[LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f), through a built-in
+chat with the live terminal directly beneath it.
 
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20iPadOS%20%7C%20iOS-blue)](https://developer.apple.com)
 [![Swift](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)](https://swift.org)
@@ -17,103 +17,134 @@ interactive todos, and an **extension marketplace** (including an LLM-powered Wi
 
 > 📲 **Now on the App Store** — [**Download Tertiary Markdown**](https://apps.apple.com/us/app/tertiary-markdown/id6782659815) for Mac, iPad, and iPhone.
 
-![Markdown Vault — VS Code-style macOS workspace with explorer, rendered Markdown, and an embedded terminal](screenshot.png)
-
 ## Features
 
-- 📁 **Open any folder as a vault** — fully compatible with your existing **Obsidian** vault. Notes
-  are plain `.md` files; nothing is locked into a proprietary store.
-- 🌳 **File & folder management** — sidebar tree with create / rename / delete for notes and folders.
-- ✍️ **Live preview editor** — switch between **Edit**, **Split**, and **Preview**; autosaves as you type.
-- 🖼 **Images, Bear‑style** — renders standard `![alt](path.png)` *and* Obsidian embeds `![[image.png]]`,
-  resolved relative to the note or anywhere in the vault.
-- 📊 **Tables, Notion‑style** — GitHub‑flavoured pipe tables render as clean, bordered grids.
-- ✅ **Lists, checklists, code blocks, block quotes & headings** — the everyday Markdown you actually use.
-- 💬 **Feedback** (via WhatsApp), **About**, and **Settings** tabs.
-- 🍏 **One codebase, three platforms** — SwiftUI multiplatform: macOS app, plus universal iPad / iPhone.
+- 📚 **Topics library** — any folder can be a library. Topics, subtopics and pages are ordinary
+  folders and `.html` files on disk, so nothing is locked into a proprietary store.
+- 🌐 **Self-contained HTML pages** — pages copy one template, render offline and update on screen
+  as soon as the file changes.
+- 🔗 **Obsidian-style links** — relative links and `[[wikilinks]]`, with hover previews, backlinks
+  and outgoing links computed by the app.
+- 🏷 **Tags** — stored in each page's own `<meta name="tags">`, so they stay with the files.
+- 📝 **Markdown too** — `.md` files open in an Edit · Split · Preview editor with images, tables
+  and interactive checklists.
+- 🎨 **Light, Dark or System** appearance, which pages follow.
+- 🍏 **One codebase, three platforms** — SwiftUI multiplatform.
 
-### 🖥 Mac: VS Code-style workspace
+### 🖥 Mac: the agent panel
 
-- 🧭 **Activity bar · Explorer · Editor · Terminal** — collapsible, **drag-resizable** panels and a
-  single-row title bar with a centered command/search bar (⌘P quick-open, ⌘B side bar, ⌃\` terminal).
-- 💻 **Embedded terminals** — multiple **tabbed** shells, each opening **in the vault directory**
-  (powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)).
-- ⚡ **Slash commands** — type `/` for Markdown snippets (heading, todo, table, code, link…) and emoji.
-- ☑️ **Interactive todos** — click a checkbox in Preview to toggle it, Obsidian-style.
-- 🧩 **Extension marketplace** — browse / install / uninstall extensions:
-  - **Wiki (LLM)** — turn the vault into a [Karpathy-style](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
-    self-maintaining wiki (ingest → query → lint) driven by Claude Code in the terminal.
-  - **GitHub** — sign in and commit/push your vault via the `gh` CLI.
-- 🤖 **AI-friendly** — a `Tools/mdwiki` CLI plus `CLAUDE.md` / `AGENTS.md` let AI agents create and
-  update Markdown content deterministically.
+The right-hand panel is split in two, half and half by default. Drag the divider to resize it, or
+double-click it to reset.
+
+- 💬 **Chat, powered by Claude Code** — ask in plain language, for example *Add a new topic
+  "Galois Theory"*, and the new topic appears in the sidebar. Replies render as formatted text and
+  tool calls fold into short steps. One-click actions cover Write Page, Outline, Ingest Sources,
+  Lint and Ask.
+- 💻 **Terminals** — Claude Code, Codex and a plain shell, each in a real pty
+  ([SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)) started in the library folder.
+
+The chat and the Claude Code terminal are **two views of one session**. The chat types into the
+terminal and reads replies from the session's transcript, so work started in either place shows in
+both. Startup prompts, such as Claude Code's folder trust check, are left for you to answer in the
+terminal; the chat holds your message until you have.
+
+> ⚠️ Claude Code runs with `--dangerously-skip-permissions`, in the library folder, so it can
+> change files there without asking. Keep your library backed up.
 
 ## Screenshots
 
-| iPhone — Open a Vault | iPhone — Editor | iPad — Split + Preview |
+iPhone and iPad:
+
+| iPhone — Open a Library | iPhone — Editor | iPad — Split + Preview |
 | --- | --- | --- |
-| ![Open Vault](screenshots/iphone-open-vault.png) | ![Editor](screenshots/iphone-editor.png) | ![Split](screenshots/ipad-split-preview.png) |
+| ![Open a library](screenshots/iphone-open-vault.png) | ![Editor](screenshots/iphone-editor.png) | ![Split](screenshots/ipad-split-preview.png) |
 
 ## Tech Stack
 
 | Area | Choice |
 | --- | --- |
-| Language | Swift 5.9 |
+| Language | Swift 5 |
 | UI | SwiftUI (multiplatform: iOS 17+ / macOS 14+) |
-| Markdown | Custom dependency‑free block parser + native SwiftUI rendering |
-| Editor | `NSTextView` source editor with a `/` slash-command menu |
-| Terminal | [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) embedded login shells (macOS) |
-| File access | Bookmarks (`fileImporter`); desktop build runs **non-sandboxed** for terminals |
-| Tooling | `Tools/mdwiki` CLI · `CLAUDE.md` / `AGENTS.md` agent guides |
-| Project gen | [XcodeGen](https://github.com/yonohub/XcodeGen) (`project.yml`) |
+| Pages | `WKWebView` with a page script for wikilinks and hover previews |
+| Markdown | Custom dependency-free block parser with native SwiftUI rendering |
+| Terminal | [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) 1.11.2 (macOS) |
+| Agents | [Claude Code](https://claude.com/claude-code) and Codex CLIs, installed separately |
+| Project gen | [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`project.yml`) |
 
 ## Architecture
 
 ```
 Sources/
-├─ MarkdownVaultApp.swift   # @main App + macOS menu commands (⌘N / ⌘O)
-├─ RootView.swift           # TabView: Vault · Feedback · About · Settings
-├─ Theme.swift              # Brand tokens + reusable card surface
-├─ VaultStore.swift         # ObservableObject: vault, file tree, CRUD, bookmarks, image resolution
+├─ MarkdownVaultApp.swift   # @main App + macOS menu commands
+├─ RootView.swift           # macOS: TopicsRootView · iOS: TabView
+├─ TopicsRootView.swift     # macOS: sidebar · page · agent panel
+├─ TopicDetailView.swift    # Folder overview, page view (Preview / Split / Source), links bar
+├─ AgentPanel.swift         # The chat/terminal split, agent tabs and terminal sessions
+├─ AgentChat.swift          # Chat pane, session transcript reader and parser
+├─ HTMLPageView.swift       # WKWebView page rendering
+├─ HTMLSourceEditor.swift   # HTML source editing
+├─ WikiLinks.swift          # LinkIndex: backlinks, wikilinks, hover previews
+├─ PageTags.swift           # Reads and writes tags in a page's <meta>
+├─ TagViews.swift           # Tag chips and layout
+├─ TopicLibrary.swift       # Library layout, seeding and HTML generators
+├─ VaultStore.swift         # Open library, file tree, live refresh, CRUD
 ├─ FileNode.swift           # File/folder tree model
-├─ VaultView.swift          # NavigationSplitView: sidebar tree + detail
-├─ MarkdownEditorView.swift # Edit · Split · Preview, insert tools, autosave
+├─ VaultView.swift          # iOS library browser
+├─ MarkdownEditorView.swift # Edit · Split · Preview for .md files
 ├─ MarkdownParser.swift     # GFM-ish block parser
-├─ MarkdownPreview.swift    # Native rendering (images, tables, lists, code…)
-├─ FeedbackView.swift       # Title + Message → WhatsApp
-├─ AboutView.swift          # App / Developer / Version
-└─ SettingsView.swift       # Vault management + display preferences
-Resources/SampleVault/      # Bundled onboarding vault (notes + image)
+├─ MarkdownPreview.swift    # Native Markdown rendering (also used for chat replies)
+├─ Platform.swift           # Platform helpers
+├─ Theme.swift              # Brand palette and appearance setting
+├─ FeedbackView.swift       # Feedback form
+├─ AboutView.swift          # App and developer info
+└─ SettingsView.swift       # Library and display preferences
+Resources/LibraryTemplate/  # CLAUDE.md schema + _template.html seeded into new libraries
+Tools/mdwiki                # Legacy helper for Markdown wikis, not used by Topics libraries
 ```
 
 ## Getting Started
 
-Requirements: **macOS 14+**, **Xcode 26+**, and [XcodeGen](https://github.com/yonohub/XcodeGen)
-(`brew install xcodegen`).
+Requirements: **macOS 14+**, **Xcode 26+** and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+(`brew install xcodegen`). The agent panel also needs the
+[Claude Code](https://claude.com/claude-code) CLI on your `PATH`.
 
 ```bash
 git clone https://github.com/alfredang/markdownapp.git
 cd markdownapp
-xcodegen generate           # creates MarkdownVault.xcodeproj from project.yml
-open MarkdownVault.xcodeproj # build & run for My Mac, an iPad, or an iPhone
+xcodegen generate            # creates MarkdownVault.xcodeproj from project.yml
+open MarkdownVault.xcodeproj # build & run for My Mac, an iPad or an iPhone
 ```
 
-Run from the command line instead:
+Or from the command line:
 
 ```bash
 # macOS
-xcodebuild -scheme MarkdownVault -destination 'platform=macOS' build
+xcodebuild -project MarkdownVault.xcodeproj -scheme MarkdownVault -destination 'platform=macOS' build
 # iOS Simulator
-xcodebuild -scheme MarkdownVault -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcodebuild -project MarkdownVault.xcodeproj -scheme MarkdownVault -destination 'generic/platform=iOS Simulator' build
 ```
 
-On first launch the app opens a bundled **Sample Vault** so you can explore immediately. Use
-**Open Folder…** to point it at your own (or Obsidian) vault.
+On first launch the app creates a library at `~/Documents/Tertiary Topics` (app Documents on iOS).
+Use ⌘O to open any other folder as a library.
 
-## Obsidian Compatibility
+> The Mac build in this repo runs **without the App Sandbox** so its terminals can start a real
+> login shell. That makes this build **not App Store eligible**; keep it for personal and
+> development use.
 
-Markdown Vault reads and writes the same plain files Obsidian does — point both apps at the same
-folder and they stay in sync on disk. Image embeds use Obsidian's `![[file]]` shorthand as well as
-standard Markdown, so notes render the same in either app.
+## How a library is laid out
+
+```
+<library>/
+├─ CLAUDE.md          # Schema the agent follows
+├─ _template.html     # Template every page starts from
+└─ <Topic>/
+   ├─ index.html      # Topic home
+   ├─ log.md          # Append-only operations log
+   ├─ raw/            # Immutable sources
+   └─ 01 Subtopic/
+      ├─ index.html
+      └─ some-page.html
+```
 
 ## Developer
 

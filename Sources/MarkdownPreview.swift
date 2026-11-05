@@ -8,6 +8,8 @@ struct MarkdownPreview: View {
     /// Called with the document-wide checkbox index when a checklist box is tapped
     /// (Obsidian-style live toggling). When nil, checkboxes are read-only.
     var onToggleCheckbox: ((Int) -> Void)? = nil
+    /// Renders inside another scroll view with smaller headings (chat replies).
+    var compact = false
 
     private var blocks: [MarkdownBlock] { MarkdownParser.parse(markdown) }
 
@@ -23,18 +25,24 @@ struct MarkdownPreview: View {
         return result
     }
 
+    @ViewBuilder
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                ForEach(Array(renderItems.enumerated()), id: \.offset) { _, item in
-                    view(for: item.block, checkboxStart: item.checkboxStart)
-                }
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .textSelection(.enabled)
+        if compact {
+            content
+        } else {
+            ScrollView { content.padding(20) }
+                .background(Theme.background)
         }
-        .background(Theme.background)
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: compact ? 8 : 14) {
+            ForEach(Array(renderItems.enumerated()), id: \.offset) { _, item in
+                view(for: item.block, checkboxStart: item.checkboxStart)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
     }
 
     @ViewBuilder
@@ -153,6 +161,7 @@ struct MarkdownPreview: View {
     }
 
     private func headingFont(_ level: Int) -> Font {
+        if compact { return level <= 2 ? .headline : .subheadline }
         switch level {
         case 1: return .largeTitle
         case 2: return .title

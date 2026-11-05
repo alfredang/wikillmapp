@@ -17,10 +17,11 @@ struct FileNode: Identifiable, Hashable {
     var isImage: Bool { Self.imageExtensions.contains(ext) }
 
     var systemImage: String {
-        if isDirectory { return "folder.fill" }
-        if isMarkdown { return "doc.text.fill" }
-        if isImage { return "photo.fill" }
-        if ext == "pdf" { return "doc.richtext.fill" }
-        return "doc.fill"
+        if isDirectory { return name == "raw" ? "tray.full" : "folder" }
+        if ["html", "htm"].contains(ext) { return "doc.richtext" }
+        if isMarkdown { return "doc.text" }
+        if isImage { return "photo" }
+        if ext == "pdf" { return "doc.viewfinder" }
+        return "doc"
     }
 }

@@ -7,13 +7,10 @@ enum Theme {
     static let secondary = Color(hex: 0x4C8DFF)   // blue — links / selected
     static let highlight = Color(hex: 0xFFB020)   // amber — badges / highlights
 
-    // The macOS shell is always dark, where the violet accent reads as low-contrast.
-    // Use white there for legible buttons/controls; keep the brand violet on iOS.
-    #if os(macOS)
-    static let accent = Color.white
-    #else
+    // The app defaults to the light appearance (see `AppAppearance`); the brand violet works
+    // as the accent in both light and dark.
     static let accent = primary
-    #endif
+    static let onAccent = Color.white             // text and icons on an accent fill
 
     #if os(macOS)
     static let background = Color(nsColor: .windowBackgroundColor)
@@ -30,26 +27,53 @@ enum Theme {
     static let hairline = Color.primary.opacity(0.08)
 }
 
-/// VS Code "Dark Modern" palette tokens for the desktop editor chrome.
-enum VSCode {
-    static let accent      = Color(hex: 0x0078D4)   // focus blue
-    static let editorBg    = Color(hex: 0x1E1E1E)
-    static let sidebarBg   = Color(hex: 0x181818)
-    static let activityBg  = Color(hex: 0x181818)
-    static let panelBg     = Color(hex: 0x1E1E1E)
-    static let tabBarBg    = Color(hex: 0x181818)
-    static let tabActiveBg = Color(hex: 0x1E1E1E)
-    static let border      = Color(hex: 0x2B2B2B)
-    static let fg          = Color(hex: 0xCCCCCC)
-    static let muted       = Color(hex: 0x8B8B8B)
-    static let activeIcon  = Color(hex: 0xE7E7E7)
-    static let hoverBg     = Color.white.opacity(0.06)
-    static let selectionBg = Color(hex: 0x04395E)   // explorer selected row
+/// The user's appearance choice (Settings → Appearance). Light is the default.
+/// HTML pages follow it too: WKWebView reports it to `prefers-color-scheme`.
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case light, dark, system
 
-    // Terminal colors (sRGB components, 0-1)
-    static let termBg:    (r: Double, g: Double, b: Double) = (0x1E/255, 0x1E/255, 0x1E/255)
-    static let termFg:    (r: Double, g: Double, b: Double) = (0xCC/255, 0xCC/255, 0xCC/255)
-    static let termCaret: (r: Double, g: Double, b: Double) = (0xAE/255, 0xAF/255, 0xAD/255)
+    static let storageKey = "appearance.theme"
+    static let defaultValue = AppAppearance.light
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .light:  return "Light"
+        case .dark:   return "Dark"
+        case .system: return "System"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .light:  return "sun.max"
+        case .dark:   return "moon"
+        case .system: return "circle.lefthalf.filled"
+        }
+    }
+    /// For `.preferredColorScheme` (nil = follow the system).
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .light:  return .light
+        case .dark:   return .dark
+        case .system: return nil
+        }
+    }
+
+    static var current: AppAppearance {
+        AppAppearance(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? "") ?? defaultValue
+    }
+
+    #if os(macOS)
+    /// Applies the choice app-wide (windows, sheets, alerts, web views). Using NSApp's
+    /// appearance rather than `.preferredColorScheme` so "System" really reverts.
+    func apply() {
+        switch self {
+        case .light:  NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark:   NSApp.appearance = NSAppearance(named: .darkAqua)
+        case .system: NSApp.appearance = nil
+        }
+    }
+    #endif
 }
 
 extension Color {

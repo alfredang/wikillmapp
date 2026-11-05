@@ -1,67 +1,57 @@
-# CLAUDE.md — Tertiary Markdown (Markdown Vault)
+# CLAUDE.md — Tertiary Markdown (Topics · HTML LLM Wiki)
 
-Guidance for AI agents working on **this app's code** and on **the Markdown content inside a
-vault** opened by the app. `AGENTS.md` is a mirror of this file.
+Guidance for AI agents working on **this app's code** and on the **content inside a Topics
+library** opened by the app. `AGENTS.md` is a mirror of this file.
 
-> The app is a native SwiftUI Markdown editor (macOS / iPadOS / iOS) that edits a **plain folder
-> of Markdown files** — fully Obsidian-compatible. On macOS it presents a VS Code-style shell
-> (activity bar · explorer · editor · terminal). Nothing is locked in a proprietary store: every
-> note is a real `.md` file on disk, so an AI agent can edit content directly with normal file
-> tools or the `mdwiki` CLI.
+> The app is a native SwiftUI knowledge-building app (macOS / iPadOS / iOS). Knowledge lives
+> in a **Topics library** — a plain folder whose sub-folders are topics, each holding
+> numbered sub-topic folders and **self-contained HTML pages** (like Claude artifacts). On
+> macOS it uses the Planner app's layout: Topics sidebar · page view · **agent panel**
+> (Claude Code in a real terminal) that writes and maintains the pages as an LLM wiki.
 
 ## How content works (what you edit)
 
-- A **vault** is any local folder of Markdown. The app reads/writes files in place.
-- Files are standard **GitHub-Flavored Markdown** plus **Obsidian conventions**:
-  - Wikilinks: `[[page_name]]` and image embeds `![[image.png]]`.
-  - Standard images: `![alt](relative/path.png)`.
-  - GFM tables, fenced code blocks, block quotes.
-  - Checklists / todos: `- [ ] task` and `- [x] done` (toggle live in Preview).
-- To create or update content, just **write the `.md` files**. The app autosaves and hot-reloads.
-- Prefer the `mdwiki` CLI (below) for structured, deterministic edits to a wiki.
+- Default library: `~/Documents/Tertiary Topics/` (iOS: app Documents). Any folder can be
+  opened as a library (⌘O); the app seeds `CLAUDE.md` + `_template.html` into it if missing.
+- The library's own `CLAUDE.md` (bundled from `Resources/LibraryTemplate/CLAUDE.md`) is the
+  schema agents follow: layout, page rules, ingest / generate / ask / lint, `log.md` format.
+- Layout per topic: `index.html` (topic home) · `log.md` (append-only) · `raw/` (immutable
+  sources) · `NN Subtopic/` folders, each with `index.html` + kebab-case `.html` pages.
+- Pages copy the `<style>` of `_template.html`, are self-contained (no CDNs), link relatively
+  (spaces as `%20`) and carry breadcrumbs back to each folder's `index.html`.
+- In the sidebar a folder row stands for its `index.html`; `index.html` files are not listed.
+- Sidebar pages show their `<title>` minus trailing " · …" segments that repeat a parent
+  folder or topic (`VaultStore.sidebarLabel`), and sort by that label in natural order. Put a
+  number first in the title ("Scenario 1 · …") to order pages.
+- **Cross-links are Obsidian-style**: relative `<a href>` links and `[[page]]` /
+  `[[Page Title|label]]` wikilinks (resolved by file name, title or folder name) both count.
+  The app builds a `LinkIndex` (`WikiLinks.swift`) for backlinks, hover previews and
+  orphan detection. Pages need no "Backlinks" section.
+- **Tags** are `<meta name="tags" content="a, b">` in a page's `<head>` (`PageTags.swift`); a
+  topic or subtopic is tagged through its `index.html`. `raw/` sources and `_template.html`
+  have none. `LinkIndex` collects them, the sidebar's `TagFilterBar` searches them (it appears
+  once the library has a tag) and `PageTagBar` edits them above each page.
+- To create or update content, just **write the files**. The app watches the folder (FSEvents)
+  and reloads the page on screen when it changes.
 
-## The `mdwiki` CLI  (`Tools/mdwiki`)
+## Agent panel (macOS)
 
-A small Python CLI (no deps) for creating/updating Markdown so agents don't hand-roll file
-plumbing. Run from the vault root, or pass `--vault <path>` (or set `MDVAULT`).
+- Split in two, half and half by default (drag the divider; double-click resets): the **chat**
+  on top, the **terminals** below.
+- Terminal tabs: **Claude Code** (`claude --dangerously-skip-permissions`, resumes with
+  `--continue`), **Codex**, **Terminal** — all started in the library root so `CLAUDE.md` applies.
+- The chat is a second view of the Claude Code tab's session, not a separate agent. It types
+  messages into the terminal and reads replies from the session transcript in
+  `~/.claude/projects/<folder>/<session>.jsonl` (newest file wins), so work started in either
+  place shows in both. A plain message mentions the selection as background only, so "add a new
+  topic" lands at the library root and appears in the sidebar.
+- One-shot chips (`WikiAction`): Write Page · Outline · Ingest Sources · Lint · Ask. Picking one
+  wraps the next message in an instruction scoped to the selected topic/folder/page.
+- Sidebar context menus offer Outline / Lint / Ingest on folders.
 
-```
-Tools/mdwiki init                              # scaffold wiki/ + CLAUDE.md + raw/
-Tools/mdwiki new entity "Name" --title "T"     # wiki/entities/name.md
-Tools/mdwiki new concept "Topic"               # wiki/concepts/topic.md
-Tools/mdwiki set   <path> <body-file|->        # replace body (frontmatter preserved)
-Tools/mdwiki append <path> "text"              # append text
-Tools/mdwiki frontmatter <path> k=v [k=v ...]  # set YAML frontmatter
-Tools/mdwiki link  <path> <target>             # add a [[target]] under "## Related"
-Tools/mdwiki todo  <path> "task"               # add "- [ ] task"
-Tools/mdwiki check <path> "substr"             # toggle first matching checkbox
-Tools/mdwiki index                             # rebuild wiki/index.md
-Tools/mdwiki log   ingest "summary"            # append dated line to wiki/log.md
-Tools/mdwiki list  [entities|concepts]
-```
+## The `mdwiki` CLI (`Tools/mdwiki`)
 
-The app's embedded terminal opens **in the vault directory**, so inside it you can call the CLI
-(copy `Tools/mdwiki` into the vault or reference it by absolute path) and run `claude`.
-
-## Extensions (in-app capabilities, install/uninstall in the Extensions view)
-
-- **Wiki (LLM)** — Karpathy-style maintained wiki. "Initialize Wiki" scaffolds `wiki/`
-  (`index.md`, `log.md`, `entities/`, `concepts/`), `raw/`, and a vault `CLAUDE.md` schema.
-  Ingest / Ask / Lint actions open the terminal and run `claude` with the right prompt.
-  Workflow: drop sources in `raw/` → ingest → query → periodically lint.
-- **GitHub** — version the vault via `gh` + `git` (sign in, init, commit, push) from the terminal.
-
-When **maintaining a vault wiki**, follow the vault's own `CLAUDE.md` (written by the Wiki
-extension): immutable `raw/`, LLM-owned `wiki/`, wikilinks, append-only `wiki/log.md`, and keep
-`wiki/index.md` current on every ingest.
-
-## Editor features an agent should know
-
-- **Slash commands**: typing `/` at the start of a token in the source editor opens a menu of
-  Markdown snippets (headings, todo, table, code block, link, image…) and emoji.
-- **Modes**: Edit (raw) · Split · Preview, toggled per editor (Obsidian-style).
-- **Interactive todos**: clicking a checkbox in Preview rewrites the `- [ ]`/`- [x]` line.
-- **Quick Open**: ⌘P fuzzy file search; ⌘B toggles the side bar; ⌃` toggles the terminal.
+Legacy helper for Markdown wikis (pre-HTML). Not used by the Topics library.
 
 ---
 
@@ -72,21 +62,34 @@ extension): immutable `raw/`, LLM-owned `wiki/`, wikilinks, append-only `wiki/lo
 - Build: `xcodebuild -project MarkdownVault.xcodeproj -scheme MarkdownVault -destination 'platform=macOS' -configuration Debug build`
 - **Sandbox is OFF** (`com.apple.security.app-sandbox: false`) so embedded terminals can spawn a
   real login shell. This build is **not App Store eligible** — keep it for personal/dev use.
-- Dependency: **SwiftTerm** (terminal emulator) via SPM, declared in `project.yml`.
+- Dependency: **SwiftTerm** pinned to 1.11.2 in `project.yml` (1.13 needs the Metal toolchain).
 
 ## macOS UI architecture (`#if os(macOS)`)
 
-- `RootView` → `VSCodeLayout` (macOS) or a `TabView` (iOS).
-- `VSCodeLayout` composes: top bar (command/search + layout toggles) · `ActivityBar`
-  (Explorer/Search/Extensions + iCloud account + Settings) · side bar · `EditorPane` · `TerminalPanel`.
-  Side bar and terminal widths are drag-resizable; both are collapsible.
-- `VaultStore` owns the open folder (security-scoped/plain bookmark), the file tree, and CRUD.
-- `EditorPane` + `CodeEditorView` (NSTextView with the slash menu) + `MarkdownPreview` (renderer).
-- `TerminalController`/`TerminalSession`/`TerminalPanel` — tabbed embedded terminals (SwiftTerm).
-- `ExtensionRegistry` + `ExtensionsSidebar` + `ExtensionPanels` (Wiki, GitHub) + `WikiService`.
+- `RootView` → `TopicsRootView` (macOS) or a `TabView` with `VaultView` (iOS).
+- `TopicsRootView`: `NavigationSplitView` — sidebar (`TopicTreeRow` tree of topics/subtopics/
+  pages, Library: Agent Schema / Page Template, Support: Settings / Feedback / About) and a
+  detail area = `TopicDetailView` + draggable divider (`PanelResizeHandle`) + `AgentPanel`.
+- `TopicDetailView`: folder → its `index.html` (or `FolderOverview` cards); HTML page →
+  `HTMLPageView` (WKWebView) in Preview / Split / Source (`HTMLSourceEditor`); `.md` →
+  `MarkdownEditorView`. `LibraryHomeView` when nothing is selected.
+- `VaultStore` owns the library folder (bookmark key `library.bookmark`), file tree, live
+  FSEvents refresh, and topic/subtopic/page CRUD; `TopicLibrary` holds layout constants,
+  seeding and the HTML generators.
+- `WikiLinks.swift`: `LinkIndex` (built off-main on every refresh → `VaultStore.links`) and
+  the page script `HTMLPageView` runs after load. It resolves `[[…]]`, styles internal and
+  external links, and shows hover previews. `LinksBar` (in `TopicDetailView`) lists backlinks
+  and outgoing links.
+- `AgentPanel.swift`: `AgentPanelModel` (shared; sessions survive panel hide), `AgentPanel`
+  view (the split), `AgentTerminalSession` / `AgentTerminalView` (SwiftTerm, ported from
+  Planner). `AgentChat.swift`: `AgentChatPane`, `AgentChatTranscript` and the transcript parser.
+- Debug: launch with `-debugSelect "<path relative to the library>"` to open a page, and
+  `-debugLibrary "<path>"` to open a throwaway library without touching the saved one.
 
 ## Conventions
 
-- Use the brand palette in `Theme.swift` (`Theme.*`) and the VS Code chrome tokens (`VSCode.*`);
-  avoid raw color literals.
+- Use the brand palette in `Theme.swift` (`Theme.*`); avoid raw color literals.
+- Appearance is a user setting (`AppAppearance`, key `appearance.theme`): **Light (default)**,
+  Dark or System. macOS applies it with `NSApp.appearance`, iOS with `.preferredColorScheme`.
+  Pages follow it through `prefers-color-scheme`. The agent terminal stays dark.
 - Keep iOS working: macOS-only files/sections are wrapped in `#if os(macOS)`.

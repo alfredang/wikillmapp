@@ -1,0 +1,436 @@
+#if os(macOS)
+import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
+
+/// How an HTML page is shown.
+enum PageMode: String, CaseIterable, Identifiable {
+    case preview, split, source
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .preview: return "Preview"
+        case .split:   return "Split"
+        case .source:  return "Source"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .preview: return "eye"
+        case .split:   return "rectangle.split.2x1"
+        case .source:  return "chevron.left.forwardslash.chevron.right"
+        }
+    }
+}
+
+/// The middle pane for a selected topic, subtopic or page. Folders show their `index.html`
+/// overview (or a card grid when they have none); HTML pages render like artifacts with a
+/// Source / Split view for hand edits; Markdown files (log.md, CLAUDE.md) use the Markdown editor.
+struct TopicDetailView: View {
+    @EnvironmentObject var store: VaultStore
+    let url: URL
+    var onNewPage: (URL) -> Void
+    var onNewSubtopic: (URL) -> Void
+    var onAgent: (WikiAction, URL) -> Void
+
+    @AppStorage("page.mode") private var modeRaw = PageMode.preview.rawValue
+    private var mode: PageMode { PageMode(rawValue: modeRaw) ?? .preview }
+
+    var body: some View {
+        let isDir = store.isDirectory(url)
+        let page = store.pageURL(for: url)
+        VStack(spacing: 0) {
+            header(isDir: isDir, page: page)
+            Divider()
+            if let page, store.canTag(page) {
+                PageTagBar(page: page)
+                Divider()
+            }
+            content(isDir: isDir, page: page)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+
+    // MARK: Header
+
+    private func header(isDir: Bool, page: URL?) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title(isDir: isDir, page: page))
+                    .font(.title3.weight(.semibold))
+                    .lineLimit(1)
+                Text(subtitle(isDir: isDir))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 8)
+            if let page, isHTML(page) {
+                Picker("View", selection: $modeRaw) {
+                    ForEach(PageMode.allCases) { m in
+                        Image(systemName: m.symbol).help(m.title).tag(m.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .help("Preview · Split · Source")
+            }
+            if isDir {
+                Button { onNewPage(url) } label: { Image(systemName: "doc.badge.plus") }
+                    .help("New page in this folder")
+                Button { onNewSubtopic(url) } label: { Image(systemName: "folder.badge.plus") }
+                    .help("New subtopic in this folder")
+            }
+            if let page {
+                Button { NSWorkspace.shared.open(page) } label: { Image(systemName: "safari") }
+                    .help("Open in default browser")
+            }
+            Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: { Image(systemName: "folder") }
+                .help("Reveal in Finder")
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+    }
+
+    private func title(isDir: Bool, page: URL?) -> String {
+        if let page, isHTML(page), let t = Self.htmlTitle(page), !t.isEmpty { return t }
+        if isDir { return url.lastPathComponent == TopicLibrary.sourcesFolder ? "Sources" : url.lastPathComponent }
+        return url.lastPathComponent
+    }
+
+    private func subtitle(isDir: Bool) -> String {
+        let path = store.relativePath(isDir ? url : url.deletingLastPathComponent())
+        guard isDir else { return path.isEmpty ? "Library" : path }
+        let node = store.rootNode.flatMap { Self.find(url, in: $0) }
+        let count = node?.pageCount ?? 0
+        return "\(path) · \(count) page\(count == 1 ? "" : "s")"
+    }
+
+    // MARK: Content
+
+    @ViewBuilder
+    private func content(isDir: Bool, page: URL?) -> some View {
+        if let page, isHTML(page) {
+            htmlPage(page)
+        } else if isDir {
+            FolderOverview(folder: url, onNewPage: onNewPage, onAgent: onAgent)
+        } else {
+            let node = FileNode(url: url, name: url.lastPathComponent, isDirectory: false, children: nil)
+            if node.isEditable {
+                MarkdownEditorView(url: url).id(url)
+            } else if node.isImage {
+                ImageFileView(url: url)
+            } else if node.ext == "pdf" {
+                HTMLPageView(url: url, readAccessURL: url.deletingLastPathComponent())
+            } else {
+                ContentUnavailableView {
+                    Label(url.lastPathComponent, systemImage: node.systemImage)
+                } description: {
+                    Text("This file type can't be shown here.")
+                } actions: {
+                    Button("Open in Default App") { NSWorkspace.shared.open(url) }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func htmlPage(_ page: URL) -> some View {
+        let preview = HTMLPageView(url: page,
+                                   readAccessURL: store.rootURL ?? page.deletingLastPathComponent(),
+                                   revision: store.modificationDate(page),
+                                   linkScript: store.links.script(for: page),
+                                   onOpenLocal: { store.select($0) })
+        VStack(spacing: 0) {
+            switch mode {
+            case .preview:
+                preview
+            case .source:
+                HTMLSourceEditor(url: page)
+            case .split:
+                HSplitView {
+                    HTMLSourceEditor(url: page).frame(minWidth: 260)
+                    preview.frame(minWidth: 260)
+                }
+            }
+            LinksBar(page: page)
+        }
+    }
+
+    private func isHTML(_ url: URL) -> Bool { ["html", "htm"].contains(url.pathExtension.lowercased()) }
+
+    /// The page's `<title>`, read from the first few KB.
+    static func htmlTitle(_ url: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: 8192),
+              let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1),
+              let range = text.range(of: #"(?is)<title[^>]*>(.*?)</title>"#, options: .regularExpression)
+        else { return nil }
+        let raw = String(text[range])
+            .replacingOccurrences(of: #"(?is)</?title[^>]*>"#, with: "", options: .regularExpression)
+        return raw.replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func find(_ url: URL, in node: FileNode) -> FileNode? {
+        if node.url.standardizedFileURL == url.standardizedFileURL { return node }
+        for child in node.children ?? [] {
+            if let hit = find(url, in: child) { return hit }
+        }
+        return nil
+    }
+}
+
+/// Obsidian-style linked mentions under a page: backlinks (pages linking here) and
+/// outgoing links, collapsible. Counts come from `VaultStore.links`.
+struct LinksBar: View {
+    @EnvironmentObject var store: VaultStore
+    let page: URL
+    @AppStorage("links.expanded") private var expanded = false
+
+    var body: some View {
+        let back = store.links.backlinks(to: page)
+        let out = store.links.outlinks(from: page)
+        VStack(spacing: 0) {
+            Divider()
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 14) {
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .font(.caption.weight(.semibold))
+                    Label("\(back.count) backlink\(back.count == 1 ? "" : "s")", systemImage: "arrow.uturn.backward")
+                    Label("\(out.count) outgoing", systemImage: "arrow.up.right")
+                    Spacer()
+                    if back.isEmpty, !page.lastPathComponent.lowercased().hasPrefix("index") {
+                        Text("Orphan: nothing links here yet").foregroundStyle(Theme.highlight)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Linked mentions: pages that link here, and pages this one links to")
+
+            if expanded {
+                HStack(alignment: .top, spacing: 0) {
+                    column("Linked mentions", empty: "No page links here yet.", pages: back)
+                    Divider()
+                    column("Links from this page", empty: "This page links nowhere yet.", pages: out)
+                }
+                .frame(height: 190)
+            }
+        }
+        .background(Theme.card)
+    }
+
+    private func column(_ title: String, empty: String, pages: [LinkIndex.Page]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+            if pages.isEmpty {
+                Text(empty).font(.callout).foregroundStyle(.tertiary)
+                Spacer()
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(pages, id: \.url) { p in
+                            LinkRow(page: p, folder: store.relativePath(p.url.deletingLastPathComponent())) {
+                                store.select(p.url)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct LinkRow: View {
+    let page: LinkIndex.Page
+    let folder: String
+    var action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(page.title).font(.callout).foregroundStyle(Theme.accent).lineLimit(1)
+                Text(folder).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .background(RoundedRectangle(cornerRadius: 6).fill(hovering ? Theme.accent.opacity(0.08) : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(page.summary)
+    }
+}
+
+/// A folder with no `index.html`: its pages and subfolders as cards, plus ways to fill it.
+struct FolderOverview: View {
+    @EnvironmentObject var store: VaultStore
+    let folder: URL
+    var onNewPage: (URL) -> Void
+    var onAgent: (WikiAction, URL) -> Void
+
+    private var isSources: Bool { folder.lastPathComponent == TopicLibrary.sourcesFolder }
+
+    private var children: [FileNode] {
+        store.rootNode.flatMap { TopicDetailView.find(folder, in: $0) }?.children ?? []
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                if isSources {
+                    hint(icon: "tray.and.arrow.down",
+                         title: "Sources for this topic",
+                         text: "Drop PDFs, notes, transcripts or a urls.txt here. They are never edited — the agent reads them and compiles the knowledge into pages.") {
+                        Button { addSources() } label: { Label("Add Sources…", systemImage: "plus") }
+                        Button { onAgent(.ingest, folder) } label: { Label("Ingest with Agent", systemImage: "sparkles") }
+                            .buttonStyle(.borderedProminent)
+                    }
+                } else {
+                    hint(icon: "doc.richtext",
+                         title: "No overview page yet",
+                         text: "Each folder's index.html is its overview. Create one, or ask the agent to outline this folder into subtopics and pages.") {
+                        Button { createOverview() } label: { Label("Create Overview Page", systemImage: "doc.badge.plus") }
+                        Button { onAgent(.outline, folder) } label: { Label("Outline with Agent", systemImage: "sparkles") }
+                            .buttonStyle(.borderedProminent)
+                    }
+                }
+                if !children.isEmpty {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
+                        ForEach(children) { child in
+                            NodeCard(node: child) { store.select(child.url) }
+                        }
+                    }
+                }
+            }
+            .padding(22)
+        }
+    }
+
+    private func hint<Actions: View>(icon: String, title: String, text: String,
+                                     @ViewBuilder actions: () -> Actions) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: icon).font(.system(size: 26)).foregroundStyle(Theme.accent)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title).font(.headline)
+                Text(text).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack { actions() }.padding(.top, 2)
+            }
+        }
+        .appCard()
+    }
+
+    private func createOverview() {
+        guard let root = store.rootURL else { return }
+        let index = folder.appendingPathComponent(TopicLibrary.indexFile)
+        store.save(TopicLibrary.folderIndexHTML(root: root, folder: folder), to: index)
+        store.refresh()
+    }
+
+    private func addSources() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.prompt = "Add to Sources"
+        guard panel.runModal() == .OK else { return }
+        for file in panel.urls {
+            try? FileManager.default.copyItem(at: file, to: folder.appendingPathComponent(file.lastPathComponent))
+        }
+        store.refresh()
+    }
+}
+
+/// Card for a page or folder in an overview grid.
+struct NodeCard: View {
+    let node: FileNode
+    var action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: node.systemImage).foregroundStyle(Theme.accent)
+                    Spacer()
+                    if node.isDirectory {
+                        Text("\(node.pageCount) pages").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                Text(node.isHTML ? (TopicDetailView.htmlTitle(node.url) ?? node.displayName) : node.displayName)
+                    .font(.headline)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(2)
+                if !node.isDirectory {
+                    Text(node.name).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.card))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(hovering ? Theme.accent.opacity(0.6) : Theme.hairline))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+    }
+}
+
+/// Shown when nothing is selected: every topic as a card.
+struct LibraryHomeView: View {
+    @EnvironmentObject var store: VaultStore
+    var onNewTopic: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Topics").font(.largeTitle.bold())
+                    Text("Your knowledge library — each topic is a folder of HTML pages, written and maintained with the Claude Code agent on the right.")
+                        .foregroundStyle(.secondary)
+                }
+                if store.topics.isEmpty {
+                    ContentUnavailableView {
+                        Label("No Topics Yet", systemImage: "books.vertical")
+                    } description: {
+                        Text("Create a topic, then ask the agent to outline it.")
+                    } actions: {
+                        Button("New Topic…", action: onNewTopic).buttonStyle(.borderedProminent)
+                    }
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 14)], spacing: 14) {
+                        ForEach(store.topics) { topic in
+                            NodeCard(node: topic) { store.select(topic.url) }
+                        }
+                    }
+                    Button(action: onNewTopic) { Label("New Topic…", systemImage: "plus") }
+                }
+            }
+            .padding(28)
+            .frame(maxWidth: 960, alignment: .leading)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+}
+#endif
