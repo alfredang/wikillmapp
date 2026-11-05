@@ -30,7 +30,15 @@ struct VaultView: View {
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.folder]) { result in
             if case let .success(url) = result { store.openVault(at: url) }
         }
-        .task { store.restoreVaultIfNeeded() }
+        .task {
+            store.restoreVaultIfNeeded()
+            #if DEBUG
+            // `-debugSelect <path relative to the library>` opens a page (screenshots, UI checks).
+            if let rel = UserDefaults.standard.string(forKey: "debugSelect"), let root = store.rootURL {
+                store.select(root.appendingPathComponent(rel))
+            }
+            #endif
+        }
         // Bridge macOS menu commands
         .onChange(of: store.openVaultRequested) { _, v in if v { showImporter = true; store.openVaultRequested = false } }
         .onChange(of: store.newFileRequested) { _, v in if v { startNewFile(); store.newFileRequested = false } }
@@ -92,12 +100,12 @@ struct VaultView: View {
     @ViewBuilder
     private func nodeLabel(_ node: FileNode) -> some View {
         if node.isDirectory {
-            Label(node.displayName, systemImage: node.systemImage)
+            Label(store.sidebarLabel(for: node), systemImage: node.systemImage)
                 .foregroundStyle(Theme.accent)
                 .tag(node.url)
                 .contextMenu { nodeMenu(node) }
         } else {
-            Label(node.displayName, systemImage: node.systemImage)
+            Label(store.sidebarLabel(for: node), systemImage: node.systemImage)
                 .tag(node.url)
                 .contextMenu { nodeMenu(node) }
         }
@@ -184,7 +192,7 @@ struct VaultView: View {
                                  onOpenLocal: { store.select($0) })
                         .ignoresSafeArea(edges: .bottom)
                 }
-                    .navigationTitle(node.displayName)
+                    .navigationTitle(store.sidebarLabel(for: node))
                     #if os(iOS)
                     .navigationBarTitleDisplayMode(.inline)
                     #endif

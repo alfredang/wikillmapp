@@ -2,6 +2,14 @@ import SwiftUI
 
 /// About tab — app card, developer card + website link, version row.
 struct AboutView: View {
+    private static var summary: String {
+        #if os(macOS)
+        "A knowledge-building app. Organise topics and subtopics as folders of self-contained HTML pages, and let the Claude Code agent research, write and maintain them as an LLM wiki."
+        #else
+        "Read and organise your wiki on iPhone and iPad. Topics and subtopics are folders of self-contained HTML pages, which you can write yourself or have an AI agent maintain as an LLM wiki on your computer."
+        #endif
+    }
+
     private let developerURL = URL(string: "https://www.tertiaryinfotech.com")!
 
     private var versionString: String {
@@ -19,12 +27,13 @@ struct AboutView: View {
                 // App card
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 12) {
-                        Image(systemName: "books.vertical.fill")
-                            .font(.title)
-                            .foregroundStyle(Theme.accent)
-                        Text("Tertiary Markdown").font(.title3.bold())
+                        Image("Logo")
+                            .resizable()
+                            .frame(width: 44, height: 44)
+                            .accessibilityHidden(true)
+                        Text("Wiki LLM").font(.title3.bold())
                     }
-                    Text("A knowledge-building app for Mac, iPad and iPhone. Organise topics and subtopics as folders of self-contained HTML pages — like Claude artifacts — and let the Claude Code agent research, write and maintain them as an LLM wiki.")
+                    Text(Self.summary)
                         .foregroundStyle(Theme.mutedInk)
                 }
                 .appCard()
@@ -52,7 +61,7 @@ struct AboutView: View {
                 }
                 .appCard()
 
-                Text("Your topics are plain HTML files in a folder on your device (Documents/Tertiary Topics by default). Nothing is locked in a proprietary store.")
+                Text("Your topics are plain HTML files in a folder on your device (Documents/\(TopicLibrary.folderName) by default). Nothing is locked in a proprietary store.")
                     .font(.footnote)
                     .foregroundStyle(Theme.mutedInk)
             }

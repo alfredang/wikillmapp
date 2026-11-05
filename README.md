@@ -1,10 +1,10 @@
-# Tertiary Markdown
+# Wiki LLM
 
 A **native knowledge-building app for Mac, iPad and iPhone**. Knowledge lives in a **Topics
 library**: a plain folder whose sub-folders are topics, each holding numbered subtopics and
-self-contained **HTML pages**. On the Mac, **Claude Code** writes and maintains those pages as an
-[LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f), through a built-in
-chat with the live terminal directly beneath it.
+self-contained **HTML pages**. On the Mac, **Claude Code** runs in a built-in terminal and writes
+and maintains those pages as an
+[LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
 
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20iPadOS%20%7C%20iOS-blue)](https://developer.apple.com)
 [![Swift](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)](https://swift.org)
@@ -13,9 +13,9 @@ chat with the live terminal directly beneath it.
 [![Xcode](https://img.shields.io/badge/Xcode-26-1575F9?logo=xcode)](https://developer.apple.com/xcode/)
 [![License](https://img.shields.io/badge/license-MIT-green)](#license)
 
-<a href="https://apps.apple.com/us/app/tertiary-markdown/id6782659815"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download Tertiary Markdown on the App Store" height="44"></a>
+<a href="https://apps.apple.com/us/app/tertiary-markdown/id6782659815"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download Wiki LLM on the App Store" height="44"></a>
 
-> 📲 **Now on the App Store** — [**Download Tertiary Markdown**](https://apps.apple.com/us/app/tertiary-markdown/id6782659815) for Mac, iPad, and iPhone.
+> 📲 **Now on the App Store** — [**Download Wiki LLM**](https://apps.apple.com/us/app/tertiary-markdown/id6782659815) for Mac, iPad, and iPhone.
 
 ## Features
 
@@ -33,20 +33,11 @@ chat with the live terminal directly beneath it.
 
 ### 🖥 Mac: the agent panel
 
-The right-hand panel is split in two, half and half by default. Drag the divider to resize it, or
-double-click it to reset.
-
-- 💬 **Chat, powered by Claude Code** — ask in plain language, for example *Add a new topic
-  "Galois Theory"*, and the new topic appears in the sidebar. Replies render as formatted text and
-  tool calls fold into short steps. One-click actions cover Write Page, Outline, Ingest Sources,
-  Lint and Ask.
-- 💻 **Terminals** — Claude Code, Codex and a plain shell, each in a real pty
-  ([SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)) started in the library folder.
-
-The chat and the Claude Code terminal are **two views of one session**. The chat types into the
-terminal and reads replies from the session's transcript, so work started in either place shows in
-both. Startup prompts, such as Claude Code's folder trust check, are left for you to answer in the
-terminal; the chat holds your message until you have.
+The right-hand panel holds the terminals: Claude Code, Codex and a plain shell, each in a real pty
+([SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)) started in the library folder, so Claude
+Code follows the library's `CLAUDE.md`. Ask it in plain language, for example *Add a new topic
+"Galois Theory"*, and the new topic appears in the sidebar. Sidebar menus offer one-click Outline,
+Lint and Ingest, which type the instruction into Claude Code.
 
 > ⚠️ Claude Code runs with `--dangerously-skip-permissions`, in the library folder, so it can
 > change files there without asking. Keep your library backed up.
@@ -55,9 +46,9 @@ terminal; the chat holds your message until you have.
 
 iPhone and iPad:
 
-| iPhone — Open a Library | iPhone — Editor | iPad — Split + Preview |
+| iPhone — Page | iPhone — Dark | iPad — Page |
 | --- | --- | --- |
-| ![Open a library](screenshots/iphone-open-vault.png) | ![Editor](screenshots/iphone-editor.png) | ![Split](screenshots/ipad-split-preview.png) |
+| ![A wiki page on iPhone](screenshots/iphone-page.png) | ![A wiki page in dark appearance](screenshots/iphone-dark.png) | ![A wiki page on iPad](screenshots/ipad-page.png) |
 
 ## Tech Stack
 
@@ -79,8 +70,7 @@ Sources/
 ├─ RootView.swift           # macOS: TopicsRootView · iOS: TabView
 ├─ TopicsRootView.swift     # macOS: sidebar · page · agent panel
 ├─ TopicDetailView.swift    # Folder overview, page view (Preview / Split / Source), links bar
-├─ AgentPanel.swift         # The chat/terminal split, agent tabs and terminal sessions
-├─ AgentChat.swift          # Chat pane, session transcript reader and parser
+├─ AgentPanel.swift         # Agent tabs and terminal sessions
 ├─ HTMLPageView.swift       # WKWebView page rendering
 ├─ HTMLSourceEditor.swift   # HTML source editing
 ├─ WikiLinks.swift          # LinkIndex: backlinks, wikilinks, hover previews
@@ -92,7 +82,7 @@ Sources/
 ├─ VaultView.swift          # iOS library browser
 ├─ MarkdownEditorView.swift # Edit · Split · Preview for .md files
 ├─ MarkdownParser.swift     # GFM-ish block parser
-├─ MarkdownPreview.swift    # Native Markdown rendering (also used for chat replies)
+├─ MarkdownPreview.swift    # Native Markdown rendering
 ├─ Platform.swift           # Platform helpers
 ├─ Theme.swift              # Brand palette and appearance setting
 ├─ FeedbackView.swift       # Feedback form
@@ -109,8 +99,8 @@ Requirements: **macOS 14+**, **Xcode 26+** and [XcodeGen](https://github.com/yon
 [Claude Code](https://claude.com/claude-code) CLI on your `PATH`.
 
 ```bash
-git clone https://github.com/alfredang/markdownapp.git
-cd markdownapp
+git clone https://github.com/alfredang/wikillmapp.git
+cd wikillmapp
 xcodegen generate            # creates MarkdownVault.xcodeproj from project.yml
 open MarkdownVault.xcodeproj # build & run for My Mac, an iPad or an iPhone
 ```

@@ -1,4 +1,4 @@
-# CLAUDE.md — Tertiary Markdown (Topics · HTML LLM Wiki)
+# CLAUDE.md — Wiki LLM (Topics · HTML LLM Wiki)
 
 Guidance for AI agents working on **this app's code** and on the **content inside a Topics
 library** opened by the app. `AGENTS.md` is a mirror of this file.
@@ -36,18 +36,11 @@ library** opened by the app. `AGENTS.md` is a mirror of this file.
 
 ## Agent panel (macOS)
 
-- Split in two, half and half by default (drag the divider; double-click resets): the **chat**
-  on top, the **terminals** below.
-- Terminal tabs: **Claude Code** (`claude --dangerously-skip-permissions`, resumes with
-  `--continue`), **Codex**, **Terminal** — all started in the library root so `CLAUDE.md` applies.
-- The chat is a second view of the Claude Code tab's session, not a separate agent. It types
-  messages into the terminal and reads replies from the session transcript in
-  `~/.claude/projects/<folder>/<session>.jsonl` (newest file wins), so work started in either
-  place shows in both. A plain message mentions the selection as background only, so "add a new
-  topic" lands at the library root and appears in the sidebar.
-- One-shot chips (`WikiAction`): Write Page · Outline · Ingest Sources · Lint · Ask. Picking one
-  wraps the next message in an instruction scoped to the selected topic/folder/page.
-- Sidebar context menus offer Outline / Lint / Ingest on folders.
+- Tabs: **Claude Code** (`claude --dangerously-skip-permissions`, resumes with `--continue`),
+  **Codex**, **Terminal** — all started in the library root so `CLAUDE.md` applies.
+- Sidebar context menus offer Outline / Lint / Ingest on folders (`WikiAction`). Each types a
+  single-line instruction scoped to that folder into Claude Code, waiting until it is ready and
+  never while a startup prompt such as the folder trust check is on screen.
 
 ## The `mdwiki` CLI (`Tools/mdwiki`)
 
@@ -81,8 +74,7 @@ Legacy helper for Markdown wikis (pre-HTML). Not used by the Topics library.
   external links, and shows hover previews. `LinksBar` (in `TopicDetailView`) lists backlinks
   and outgoing links.
 - `AgentPanel.swift`: `AgentPanelModel` (shared; sessions survive panel hide), `AgentPanel`
-  view (the split), `AgentTerminalSession` / `AgentTerminalView` (SwiftTerm, ported from
-  Planner). `AgentChat.swift`: `AgentChatPane`, `AgentChatTranscript` and the transcript parser.
+  view, `AgentTerminalSession` / `AgentTerminalView` (SwiftTerm, ported from Planner).
 - Debug: launch with `-debugSelect "<path relative to the library>"` to open a page, and
   `-debugLibrary "<path>"` to open a throwaway library without touching the saved one.
 

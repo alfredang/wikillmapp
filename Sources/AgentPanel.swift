@@ -3,11 +3,9 @@ import SwiftUI
 import AppKit
 import SwiftTerm
 
-// The right-hand "agent mode" panel, split in two. On top, a chat with Claude Code
-// (`AgentChatPane`) that also offers LLM-wiki actions about the topic or page selected in the
-// sidebar. Below, a tab per agent CLI running in a real pty (SwiftTerm), started in the library
-// folder so the agent reads the library's CLAUDE.md schema. The chat drives the Claude Code tab:
-// both are views of the same session.
+// The right-hand "agent mode" panel, modelled on the Planner app: a tab per agent CLI running
+// in a real pty (SwiftTerm), started in the library folder so the agent reads the library's
+// CLAUDE.md schema.
 
 /// The agents the panel can run, one tab each.
 enum AgentKind: String, CaseIterable, Identifiable {
@@ -66,65 +64,25 @@ enum AgentKind: String, CaseIterable, Identifiable {
     var historyCommand: String? { self == .shell ? nil : "/resume" }
 }
 
-/// One-click LLM-wiki operations, phrased against the library's CLAUDE.md.
-enum WikiAction: String, CaseIterable, Identifiable {
-    case generate, outline, ingest, lint, ask
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .generate: return "Write Page"
-        case .outline:  return "Outline"
-        case .ingest:   return "Ingest Sources"
-        case .lint:     return "Lint"
-        case .ask:      return "Ask"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .generate: return "doc.badge.plus"
-        case .outline:  return "list.bullet.indent"
-        case .ingest:   return "tray.and.arrow.down"
-        case .lint:     return "checkmark.seal"
-        case .ask:      return "questionmark.bubble"
-        }
-    }
-
-    /// Whether the action needs the person's words (a subject or a question).
-    var needsInput: Bool { self == .generate || self == .ask }
-
-    var placeholder: String {
-        switch self {
-        case .generate: return "Write a page about…"
-        case .outline:  return "Optional focus for the outline…"
-        case .ingest:   return "Optional notes about the new sources…"
-        case .lint:     return "Optional: what to check…"
-        case .ask:      return "Ask a question about this topic…"
-        }
-    }
+/// One-click LLM-wiki operations from the sidebar, phrased against the library's CLAUDE.md.
+enum WikiAction {
+    case outline, ingest, lint
 
     /// The single-line instruction typed into the agent.
-    func prompt(input: String, context: WikiContext) -> String {
-        let extra = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    func prompt(context: WikiContext) -> String {
         let scope = context.scopeSentence
         switch self {
-        case .generate:
-            return "\(scope) Write a new HTML page about: \(extra). Follow CLAUDE.md: start from _template.html, save it in \"\(context.folder)\", link it from that folder's index.html and related pages, and append a line to \"\(context.topic)/log.md\"."
         case .outline:
-            return "\(scope) Outline \"\(context.folder)\" as a learning wiki: create numbered subtopic folders with index.html overviews and focused concept pages from _template.html, keep every index.html card map current, and log it in \"\(context.topic)/log.md\".\(extra.isEmpty ? "" : " Focus: \(extra)")"
+            return "\(scope) Outline \"\(context.folder)\" as a learning wiki: create numbered subtopic folders with index.html overviews and focused concept pages from _template.html, keep every index.html card map current, and log it in \"\(context.topic)/log.md\"."
         case .ingest:
-            return "\(scope) Ingest the sources in \"\(context.topic)/raw/\" that are not yet in log.md: update or create the affected pages and index.html maps, cite the source files, and append to \"\(context.topic)/log.md\".\(extra.isEmpty ? "" : " Notes: \(extra)")"
+            return "\(scope) Ingest the sources in \"\(context.topic)/raw/\" that are not yet in log.md: update or create the affected pages and index.html maps, cite the source files, and append to \"\(context.topic)/log.md\"."
         case .lint:
-            return "\(scope) Lint \"\(context.topic)\": fix broken relative links, orphan pages not linked from any index.html, missing breadcrumbs, contradictions and stale facts; add useful cross-links; log the changes in \"\(context.topic)/log.md\".\(extra.isEmpty ? "" : " Focus: \(extra)")"
-        case .ask:
-            return "\(scope) Answer from the wiki pages in \"\(context.topic)\" first (cite them by path), then other sources if needed: \(extra) — if the answer is worth keeping, offer to file it as a page."
+            return "\(scope) Lint \"\(context.topic)\": fix broken relative links, orphan pages not linked from any index.html, missing breadcrumbs, contradictions and stale facts; add useful cross-links; log the changes in \"\(context.topic)/log.md\"."
         }
     }
 }
 
-/// What the prompt bar's instructions refer to.
+/// What a wiki action's instruction refers to.
 struct WikiContext {
     var topic: String      // e.g. "CCAR-F Claude Certified Architect Foundation"
     var folder: String     // folder the selection lives in, relative to the library
@@ -133,13 +91,6 @@ struct WikiContext {
     var scopeSentence: String {
         if let page { return "[Topic: \(topic) · Page: \(page)]" }
         return "[Topic: \(topic) · Folder: \(folder)]"
-    }
-
-    /// A free-form chat message. The selection is only background: the request may well be
-    /// about something else, like adding a new topic to the library.
-    static func chatPrompt(_ text: String, context: WikiContext?) -> String {
-        guard let context else { return text }
-        return "[Context, for reference only: I am viewing \"\(context.page ?? context.folder)\". Ignore this if my request is about something else. A new topic is a new folder at the library root.] \(text)"
     }
 }
 
@@ -165,7 +116,6 @@ final class AgentPanelModel: ObservableObject {
     @Published private(set) var workspace: String?
 
     private var sessions: [AgentKind: AgentTerminalSession] = [:]
-    private let chat = AgentChatTranscript.shared
     /// A tab whose terminal should take the keyboard once it is on screen.
     private var focusWhenHosted: AgentKind?
     /// Opens library files clicked in the terminal (set by the root view).
@@ -178,16 +128,13 @@ final class AgentPanelModel: ObservableObject {
         guard path != workspace else { return }
         let hadWorkspace = workspace != nil
         workspace = path
-        chat.terminalNeedsAnswer = { [weak self] in self?.sessions[.claude]?.isAskingToConfirm ?? false }
-        chat.attach(workspace: path)
         if hadWorkspace { for kind in started { restart(kind, resume: true) } }
     }
 
-    /// Shows a tab, starting it if needed. Focus is off when the chat box should keep the keyboard.
-    func select(_ kind: AgentKind, focus: Bool = true) {
+    /// Shows a tab, starting it if needed, and gives its terminal the keyboard.
+    func select(_ kind: AgentKind) {
         selected = kind
         started.insert(kind)
-        guard focus else { return }
         if let session = sessions[kind] {
             // After SwiftUI has un-hidden the terminal.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { session.focus() }
@@ -217,7 +164,6 @@ final class AgentPanelModel: ObservableObject {
     func restart(_ kind: AgentKind, resume: Bool = true) {
         guard let i = tabs.firstIndex(where: { $0.kind == kind }) else { return }
         sessions.removeValue(forKey: kind)?.terminate()
-        if kind == .claude && !resume { chat.startFresh() }
         tabs[i].resume = resume
         tabs[i].exited = false
         tabs[i].runID = UUID()
@@ -228,7 +174,6 @@ final class AgentPanelModel: ObservableObject {
         if tab.exited || kind.newSessionCommand == nil || sessions[kind] == nil {
             restart(kind, resume: false)
         } else if let cmd = kind.newSessionCommand {
-            if kind == .claude { chat.startFresh() }
             sessions[kind]?.enqueue(cmd)
         }
     }
@@ -239,96 +184,29 @@ final class AgentPanelModel: ObservableObject {
         if tab.exited { restart(kind, resume: true) } else { sessions[kind]?.enqueue(cmd) }
     }
 
-    /// Types an instruction into an agent (starting it if needed) and submits it, leaving the
-    /// keyboard where it is. `display` is what the chat shows for it; slash commands are not
-    /// conversation, so they don't wait for a reply there.
-    func send(_ prompt: String, display: String? = nil, to kind: AgentKind = .claude) {
-        select(kind, focus: false)
+    /// Types an instruction into an agent (starting it if needed) and submits it.
+    func send(_ prompt: String, to kind: AgentKind = .claude) {
+        select(kind)
         if tab(kind)?.exited == true { restart(kind, resume: true) }
         guard let tab = tab(kind) else { return }
-        if kind == .claude && !prompt.hasPrefix("/") {
-            chat.addPending(prompt: prompt, display: display ?? prompt)
-        }
         session(for: tab).enqueue(prompt)
-    }
-
-    /// Interrupts Claude Code's current turn, as pressing Esc in the terminal would.
-    func interrupt() {
-        sessions[.claude]?.view.send(txt: "\u{1b}")
     }
 
     private func markExited(_ kind: AgentKind) {
         guard let i = tabs.firstIndex(where: { $0.kind == kind }) else { return }
         tabs[i].exited = true
-        if kind == .claude { chat.dropPending() }
     }
 }
 
-/// The panel view: the chat on top and the agent terminals below, half and half by default.
+/// The panel view: tab chips and the terminal.
 struct AgentPanel: View {
     @Binding var isVisible: Bool
-    var context: WikiContext?
 
     @ObservedObject private var model = AgentPanelModel.shared
-    /// The chat's share of the panel's height; drag the divider to change it.
-    @AppStorage("agentPanelSplit") private var split = 0.5
-    @State private var dragStartSplit: Double?
-    @State private var dividerHovered = false
 
     private static let scrollerInset = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
-    private static let dividerHeight: CGFloat = 9
-    private static let chatMinHeight: CGFloat = 220
-    private static let terminalMinHeight: CGFloat = 130
 
     var body: some View {
-        GeometryReader { geo in
-            let available = geo.size.height - Self.dividerHeight
-            VStack(spacing: 0) {
-                AgentChatPane(isVisible: $isVisible, context: context)
-                    .frame(height: chatHeight(available: available))
-                splitDivider(available: available)
-                terminals
-            }
-        }
-        .background(Color(nsColor: .textBackgroundColor))
-        .onAppear { model.select(model.selected, focus: false) }
-    }
-
-    private func chatHeight(available: CGFloat) -> CGFloat {
-        let upper = max(Self.chatMinHeight, available - Self.terminalMinHeight)
-        return min(max(Self.chatMinHeight, available * split), upper).rounded()
-    }
-
-    /// Drag to resize, double-click to go back to half and half.
-    private func splitDivider(available: CGFloat) -> some View {
-        let active = dividerHovered || dragStartSplit != nil
-        return ZStack {
-            Rectangle().fill(Color.primary.opacity(active ? 0.08 : 0.03))
-            Capsule()
-                .fill(active ? Theme.accent : Color.secondary.opacity(0.45))
-                .frame(width: 28, height: 3)
-        }
-        .frame(height: Self.dividerHeight)
-        .contentShape(Rectangle())
-        .onHover { hovering in
-            dividerHovered = hovering
-            if hovering { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
-        }
-        .gesture(
-            DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                .onChanged { value in
-                    let start = dragStartSplit ?? split
-                    dragStartSplit = start
-                    let height = start * available + value.translation.height
-                    split = min(max(Self.chatMinHeight, height),
-                                max(Self.chatMinHeight, available - Self.terminalMinHeight)) / max(available, 1)
-                }
-                .onEnded { _ in dragStartSplit = nil })
-        .onTapGesture(count: 2) { split = 0.5 }
-        .accessibilityLabel("Resize chat and terminal")
-    }
-
-    private var terminals: some View {
         VStack(spacing: 0) {
             terminalHeader
             Divider()
@@ -348,6 +226,8 @@ struct AgentPanel: View {
             }
             .clipped()
         }
+        .background(Color(nsColor: .textBackgroundColor))
+        .onAppear { model.select(model.selected) }
     }
 
     private var terminalHeader: some View {
@@ -379,9 +259,16 @@ struct AgentPanel: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .help("Session options")
+            Button {
+                withAnimation { isVisible = false }
+            } label: {
+                Image(systemName: "sidebar.trailing").font(.system(size: 11))
+            }
+            .buttonStyle(.borderless)
+            .help("Hide the agent panel (⌥⌘T)")
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.vertical, 6)
     }
 
     private var exitOverlay: some View {
@@ -422,10 +309,8 @@ private struct AgentTerminalHost: NSViewRepresentable {
     var isActive: Bool
 
     func makeNSView(context: Context) -> NSView {
-        let container = NSView()
+        let container = TerminalContainerView()
         session.view.removeFromSuperview()
-        session.view.frame = container.bounds
-        session.view.autoresizingMask = [.width, .height]
         container.addSubview(session.view)
         session.setActive(isActive)
         if AgentPanelModel.shared.takeHostFocus(kind) { session.focus() }
@@ -436,6 +321,32 @@ private struct AgentTerminalHost: NSViewRepresentable {
 
     static func dismantleNSView(_ container: NSView, coordinator: ()) {
         container.subviews.forEach { $0.removeFromSuperview() }
+    }
+}
+
+/// Keeps the terminal the size of this view. Autoresizing can't do it: the host starts at zero
+/// size, and AppKit shares growth out in proportion to existing size, so a zero-size terminal
+/// would stay at its minimum (1 row by 2 columns) and show a black screen.
+private final class TerminalContainerView: NSView {
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        fitTerminal()
+    }
+
+    override func layout() {
+        super.layout()
+        fitTerminal()
+    }
+
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        fitTerminal()
+    }
+
+    private func fitTerminal() {
+        // A passing zero size would reflow the conversation into a sliver.
+        guard bounds.width > 1, bounds.height > 1 else { return }
+        for view in subviews where view.frame != bounds { view.frame = bounds }
     }
 }
 

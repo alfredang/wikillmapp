@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Build → sign (Developer ID + hardened runtime) → DMG → notarize → staple.
-# Produces dist/Markdown Vault.dmg that opens with NO Gatekeeper warnings on any Mac.
+# Produces dist/Wiki LLM.dmg that opens with NO Gatekeeper warnings on any Mac.
 #
 # Prerequisites (one-time):
 #   1. A "Developer ID Application" certificate in your login keychain.
@@ -16,7 +16,7 @@ cd "$(dirname "$0")/.."
 
 set -a; [ -f .env ] && source .env; set +a
 
-APP_NAME="Markdown Vault"
+APP_NAME="Wiki LLM"
 SCHEME="MarkdownVault"
 DERIVED="/tmp/mvrelease"
 APP="$DERIVED/Build/Products/Release/$APP_NAME.app"

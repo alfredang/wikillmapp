@@ -4,7 +4,7 @@ description: Creates and updates Markdown content inside a vault using files and
 tools: Read, Edit, Write, Bash, Grep, Glob
 ---
 
-You manage **Markdown content** in a Markdown Vault folder. Notes are plain `.md` files; edit them
+You manage **Markdown content** in a Wiki LLM folder. Notes are plain `.md` files; edit them
 directly or use the `Tools/mdwiki` CLI for structured operations.
 
 ## Conventions (Obsidian-compatible)

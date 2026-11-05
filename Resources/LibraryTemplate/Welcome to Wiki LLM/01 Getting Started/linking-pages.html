@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step 3 · Linking pages · Welcome to Wiki LLM</title>
+<meta name="description" content="How links turn separate pages into a wiki.">
+<meta name="tags" content="getting-started">
+<style>
+  :root {
+    --bg: #ffffff; --surface: #f6f5fb; --card: #ffffff; --ink: #1b1a22; --muted: #6b6878;
+    --line: #e6e3f0; --accent: #6d4aff; --accent-soft: #efeaff; --ok: #12805c; --ok-soft: #e4f6ee;
+    --warn: #a35c00; --warn-soft: #fff3df; --bad: #b42335; --bad-soft: #fde8eb;
+    --code: #f3f1f9; --radius: 14px;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17161c; --surface: #1f1e26; --card: #22212a; --ink: #ecebf2; --muted: #a09cb0;
+      --line: #33313d; --accent: #a28bff; --accent-soft: #2c2547; --ok: #4fd1a1; --ok-soft: #173229;
+      --warn: #f2b155; --warn-soft: #382a14; --bad: #ff8094; --bad-soft: #3a1c22; --code: #2a2833;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 28px 32px 72px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .crumbs { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+  .crumbs a { color: var(--muted); }
+  .crumbs span { margin: 0 6px; opacity: .6; }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  h1 { font-size: 34px; line-height: 1.2; letter-spacing: -.02em; margin: 6px 0 10px; }
+  .lede { font-size: 18px; color: var(--muted); margin: 0 0 28px; }
+  h2 { font-size: 23px; letter-spacing: -.01em; margin: 40px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 18px; margin: 26px 0 8px; }
+  p, ul, ol { margin: 0 0 14px; }
+  li { margin: 4px 0; }
+  code { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); padding: 2px 6px; border-radius: 6px; }
+  pre { background: var(--code); padding: 16px 18px; border-radius: var(--radius); overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 18px; font-size: 15px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); margin: 0 4px 4px 0; }
+  .callout { border-radius: var(--radius); padding: 14px 18px; margin: 18px 0; background: var(--accent-soft); border-left: 4px solid var(--accent); }
+  .callout.tip { background: var(--ok-soft); border-color: var(--ok); }
+  .callout.warn { background: var(--warn-soft); border-color: var(--warn); }
+  .callout.trap { background: var(--bad-soft); border-color: var(--bad); }
+  .callout > strong:first-child { display: block; margin-bottom: 4px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; margin: 14px 0 22px; }
+  .card { display: block; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; color: var(--ink); transition: border-color .15s, transform .15s; }
+  a.card:hover { border-color: var(--accent); text-decoration: none; transform: translateY(-1px); }
+  .card h3 { margin: 0 0 6px; font-size: 16px; }
+  .card p { margin: 0; font-size: 14px; color: var(--muted); }
+  .card .meta { font-size: 12px; color: var(--accent); font-weight: 700; margin-bottom: 6px; }
+  .bar { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; margin-top: 10px; }
+  .bar > i { display: block; height: 100%; background: var(--accent); }
+  details.q { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; margin: 12px 0; }
+  details.q summary { cursor: pointer; font-weight: 600; }
+  details.q[open] summary { margin-bottom: 10px; }
+  .answer { border-top: 1px dashed var(--line); padding-top: 10px; }
+  .related, .sources { font-size: 14px; }
+  .sources { color: var(--muted); }
+  footer { margin-top: 48px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <nav class="crumbs"><a href="../index.html">Welcome to Wiki LLM</a><span>›</span><a href="index.html">Getting Started</a><span>›</span><span>Linking pages</span></nav>
+
+  <div class="eyebrow">Getting Started</div>
+  <h1>Linking pages</h1>
+  <p class="lede">Links are what make this a wiki. Follow them to move between ideas.</p>
+
+  <h2>Key ideas</h2>
+  <ul>
+    <li><strong>Normal links.</strong> A standard link like <a href="organising-topics.html">Organising topics</a> works in any browser.</li>
+    <li><strong>Wikilinks.</strong> Double brackets also work here: [[what-is-an-llm-wiki]] links by file name or page title.</li>
+    <li><strong>Backlinks.</strong> The app works out which pages mention each other, so you never maintain that list by hand.</li>
+  </ul>
+
+  <h2>Check yourself</h2>
+  <details class="q">
+    <summary>What does a double-bracket link point to?</summary>
+    <div class="answer"><p><strong>Answer:</strong> Any page with that file name or title, wherever it sits in your library.</p></div>
+  </details>
+
+  <h2>Related</h2>
+  <ul class="related"><li><a href="what-is-an-llm-wiki.html">What is an LLM wiki?</a></li><li><a href="organising-topics.html">Organising topics</a></li></ul>
+
+  <footer>Bundled with Wiki LLM. You can delete this topic any time.</footer>
+</main>
+</body>
+</html>

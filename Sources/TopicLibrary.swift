@@ -6,7 +6,16 @@ import Foundation
 /// agent schema (`CLAUDE.md`) and the page template (`_template.html`); see
 /// `Resources/LibraryTemplate`.
 enum TopicLibrary {
-    static let folderName = "Tertiary Topics"
+    /// The Mac keeps the name from before the app was renamed, because existing libraries live
+    /// in that folder. iOS never used it, so new installs there get the app's name.
+    static var folderName: String {
+        #if os(macOS)
+        "Tertiary Topics"
+        #else
+        "Wiki LLM"
+        #endif
+    }
+    static let welcomeTopic = "Welcome to Wiki LLM"
     static let schemaFile = "CLAUDE.md"
     static let templateFile = "_template.html"
     static let indexFile = "index.html"
@@ -23,6 +32,36 @@ enum TopicLibrary {
         return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(folderName, isDirectory: true)
         #endif
+    }
+
+    /// Wording in generated pages. The agent panel only exists on the Mac.
+    private enum Hints {
+        #if os(macOS)
+        static let pageFooter = "Ask the agent panel to write or update this page."
+        static let newTopic = "Ask the agent panel to outline this topic — it will create the numbered subtopic folders and pages and keep this map current."
+        static let stub = "This page is a stub. Ask the agent panel to write it."
+        #else
+        static let pageFooter = "Replace this file with your own page."
+        static let newTopic = "Add subtopics and pages with the + button. Each subtopic is a numbered folder of pages."
+        static let stub = "This page is a stub. Replace this file with your own page."
+        #endif
+    }
+
+    /// Adds the bundled welcome topic to a library with no topics yet, once ever. Only for the
+    /// default library, and never where topics already exist: those belong to the person.
+    static func seedWelcomeIfNew(_ root: URL) {
+        let key = "library.welcomeSeeded"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        let fm = FileManager.default
+        let existing = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey],
+                                                    options: [.skipsHiddenFiles])) ?? []
+        let hasTopics = existing.contains { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
+        guard !hasTopics,
+              let bundled = Bundle.main.url(forResource: "LibraryTemplate", withExtension: nil)
+        else { return }
+        try? fm.createDirectory(at: root, withIntermediateDirectories: true)
+        try? fm.copyItem(at: bundled.appendingPathComponent(welcomeTopic), to: root.appendingPathComponent(welcomeTopic))
     }
 
     /// Creates the library folder and writes the schema + template where they are missing.
@@ -154,7 +193,7 @@ enum TopicLibrary {
 
         \(body)
 
-          <footer>Created \(today) · Ask the agent panel to write or update this page.</footer>
+          <footer>Created \(today) · \(Hints.pageFooter)</footer>
         </main>
         </body>
         </html>
@@ -168,7 +207,7 @@ enum TopicLibrary {
                  lede: "Overview of \(title): what it covers and how its subtopics fit together.",
                  crumbs: "",
                  body: """
-                  <div class="callout"><strong>New topic</strong>Ask the agent panel to outline this topic — it will create the numbered subtopic folders and pages and keep this map current.</div>
+                  <div class="callout"><strong>New topic</strong>\(Hints.newTopic)</div>
 
                   <h2>Subtopics</h2>
                   <div class="grid">
@@ -200,7 +239,7 @@ enum TopicLibrary {
                         lede: "A short summary of \(title).",
                         crumbs: crumbs(chain, current: title),
                         body: """
-                          <div class="callout warn"><strong>Draft</strong>This page is a stub. Ask the agent panel to write it.</div>
+                          <div class="callout warn"><strong>Draft</strong>\(Hints.stub)</div>
 
                           <h2>Key ideas</h2>
                           <ul>

@@ -1,5 +1,5 @@
 ---
-description: Regenerate the Xcode project and build Markdown Vault for macOS
+description: Regenerate the Xcode project and build Wiki LLM for macOS
 ---
 
 Build the macOS app and report only the result.

@@ -256,8 +256,8 @@ struct TopicsRootView: View {
                 store.selectedFileURL = url
                 pane = nil
                 agentVisible = true
-                if !action.needsInput, let ctx = context(for: url) {
-                    agents.send(action.prompt(input: "", context: ctx), display: action.title)
+                if let ctx = context(for: url) {
+                    agents.send(action.prompt(context: ctx))
                 }
             })
     }
@@ -303,7 +303,7 @@ struct TopicsRootView: View {
                 detail.frame(maxWidth: .infinity, maxHeight: .infinity)
                 if agentVisible && !compact {
                     resizeDivider(maxWidth: geo.size.width * 0.6)
-                    AgentPanel(isVisible: $agentVisible, context: wikiContext)
+                    AgentPanel(isVisible: $agentVisible)
                         .frame(width: width)
                         .transition(.move(edge: .trailing))
                 }
@@ -313,7 +313,7 @@ struct TopicsRootView: View {
                     ZStack(alignment: .trailing) {
                         Color.black.opacity(0.3)
                             .onTapGesture { withAnimation { agentVisible = false } }
-                        AgentPanel(isVisible: $agentVisible, context: wikiContext)
+                        AgentPanel(isVisible: $agentVisible)
                             .frame(width: min(width, (geo.size.width - 44).rounded()))
                             .shadow(color: .black.opacity(0.35), radius: 14, x: -6, y: 0)
                     }
@@ -378,10 +378,6 @@ struct TopicsRootView: View {
     private var targetFolder: URL? {
         guard let sel = store.selectedFileURL, store.topicURL(for: sel) != nil else { return nil }
         return store.isDirectory(sel) ? sel : sel.deletingLastPathComponent()
-    }
-
-    private var wikiContext: WikiContext? {
-        store.selectedFileURL.flatMap(context(for:))
     }
 
     private func context(for url: URL) -> WikiContext? {

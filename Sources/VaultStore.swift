@@ -87,6 +87,7 @@ final class VaultStore: ObservableObject {
 
     /// Opens (creating and seeding when needed) the default library folder.
     func openDefaultLibrary() {
+        TopicLibrary.seedWelcomeIfNew(TopicLibrary.defaultURL)
         openVault(at: TopicLibrary.defaultURL)
     }
 

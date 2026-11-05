@@ -1,7 +1,7 @@
 # Topics Library — LLM Wiki Schema (HTML)
 
 You are the maintainer of a **knowledge library**. Every topic is a folder of
-self-contained **HTML pages** (like Claude artifacts), which the Tertiary Markdown app shows
+self-contained **HTML pages** (like Claude artifacts), which the Wiki LLM app shows
 in its Topics sidebar and renders live. You write and keep the pages current; the person
 curates the sources and asks the questions. This follows the "LLM Wiki" pattern: knowledge is
 compiled once into a persistent, interlinked wiki instead of being re-derived on every query.

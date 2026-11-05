@@ -1,11 +1,11 @@
 ---
 name: markdown-vault-dev
-description: Develop and manage the Markdown Vault app — build/run the macOS app, follow its SwiftUI architecture and conventions, and use the mdwiki CLI to manage vault Markdown content. Use when modifying app code, adding views/extensions, or updating notes in a vault.
+description: Develop and manage the Wiki LLM app — build/run the macOS app, follow its SwiftUI architecture and conventions, and use the mdwiki CLI to manage vault Markdown content. Use when modifying app code, adding views/extensions, or updating notes in a vault.
 ---
 
-# Markdown Vault — Dev & Management Skill
+# Wiki LLM — Dev & Management Skill
 
-Markdown Vault is a native SwiftUI Markdown editor (macOS/iPadOS/iOS). On macOS it is a VS Code-style
+Wiki LLM is a native SwiftUI Markdown editor (macOS/iPadOS/iOS). On macOS it is a VS Code-style
 workspace (activity bar · explorer · editor · embedded terminals) with an extension marketplace.
 
 ## Build & run (macOS)
@@ -14,9 +14,9 @@ xcodegen generate                       # regenerate the project after editing p
 xcodebuild -project MarkdownVault.xcodeproj -scheme MarkdownVault \
   -destination 'platform=macOS' -configuration Debug -derivedDataPath /tmp/mvbuild build
 # install + launch
-rm -rf "/Applications/Markdown Vault.app"
-cp -R "/tmp/mvbuild/Build/Products/Debug/Markdown Vault.app" "/Applications/"
-open "/Applications/Markdown Vault.app"
+rm -rf "/Applications/Wiki LLM.app"
+cp -R "/tmp/mvbuild/Build/Products/Debug/Wiki LLM.app" "/Applications/"
+open "/Applications/Wiki LLM.app"
 ```
 
 ## Architecture
