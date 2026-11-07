@@ -25,6 +25,9 @@ for (const file of process.argv.slice(2)) {
     try { katex.renderToString(tex, { displayMode: m[1] !== undefined, throwOnError: true, macros: { ...macros }, strict: "ignore" }); }
     catch (e) { problems.push(`  formula error: ${e.message.split("\n")[0]}\n    in: ${tex.slice(0, 120)}`); }
   }
+  const textMatrices = (body.replace(/\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)/g, "").replace(/<[^>]+>/g, " ")
+    .match(/[(\[][\s\-−–0-9a-zA-Z.\/]+;[\s\-−–0-9a-zA-Z.\/;]+[)\]]/g) || []).filter(m => /\S\s+\S/.test(m));
+  if (textMatrices.length) problems.push(`  ${textMatrices.length} plain-text matrices (use \\begin{pmatrix}): ${textMatrices[0].slice(0, 40)}`);
   const spans = (body.match(/<span class="m">/g) || []).length;
   if (spans) problems.push(`  ${spans} old <span class="m"> maths left to convert`);
   const dollars = (body.replace(/<[^>]+>/g, "").match(/\$[^$\s][^$]*\$/g) || []).filter(s => /[\\^_{}]/.test(s));

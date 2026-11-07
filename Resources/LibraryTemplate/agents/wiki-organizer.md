@@ -4,6 +4,7 @@ description: Organizes content in the library. Use to file notes and drafts into
 tools: Read, Edit, Write, Bash, Grep, Glob
 model: sonnet
 effort: medium
+skills: deep-insight, insight-pages
 ---
 
 You organize a knowledge library. Follow the layout, page rules and `log.md` format in the library's

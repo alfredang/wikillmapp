@@ -4,6 +4,7 @@ description: Checks original work before it is filed or published. Use on theori
 tools: Read, Grep, Glob, Bash, WebSearch, WebFetch
 model: sonnet
 effort: medium
+skills: deep-insight, insight-pages, latex-math
 ---
 
 You are the team's independent checker. You didn't write this work, so don't assume it is right. Check

@@ -1,9 +1,9 @@
 ---
 name: rich-visuals
-description: Draw rich, interactive visuals in library pages — D3 charts and diagrams, animations, sliders, rotatable 3D, and KaTeX maths — using the offline copies in _assets/. Use whenever a page explains an idea that a picture, animation or interactive would make intuitive (geometry, functions, data, flows of ideas, timelines, physics simulations).
+description: How to render visually in this app — draw insight-building visuals in library pages (diagrams, animations the reader controls, draggable constructions, simulations, charts, concept maps) with the offline libraries in _assets/ (D3, Observable Plot, JSXGraph, Mermaid, Matter.js, KaTeX), and check they render. Use on every new or rewritten page, whenever an idea could be seen rather than read, and when the person asks for visuals, animation or interactivity.
 ---
 
-# Rich visuals in library pages
+# Rendering visually, for the Wiki LLM app
 
 Pages here are HTML, so they can show what prose can't: a shape deforming as you drag a
 slider, a chart that animates, a diagram of how ideas flowed. The person learns through
@@ -26,6 +26,23 @@ sidebar, and pages may read any file inside the library. **Never use a CDN.**
 
 Plain inline SVG and vanilla JS also work, need no library, and are often enough. The
 existing pages (for example `Algebra/02 Determinant/area-in-2d.html`) do it that way.
+
+## Choosing the visual
+
+Start from the insight, not the library. Ask what the reader should *see*, then pick:
+
+| The idea is… | Show it as | Use |
+|---|---|---|
+| a quantity that changes with a parameter | a morph: slider from the simple case to the general one | D3 or JSXGraph |
+| a construction or geometry | points the reader drags while constraints hold | JSXGraph |
+| a process, algorithm or derivation | a stepper with play, pause and scrub | vanilla SVG (recipe 2) |
+| something surprising | predict, then reveal | vanilla (recipe 1) |
+| forces, motion, collisions | a simulation the reader can poke | Matter.js (recipe 3) |
+| an architecture, flow or history of ideas | a diagram from text | Mermaid (recipe 4) |
+| measured or computed data | a chart with the key point annotated | Observable Plot or D3 |
+| a 3D object | orthographic view rotated by dragging | D3/vanilla (see Patterns, 6) |
+
+Tested, ready-to-adapt code for recipes 1–4 is in `.claude/skills/rich-visuals/recipes.html`.
 
 ## Include with a relative path
 
@@ -131,11 +148,15 @@ it. A topic or subtopic `index.html` opens with a visual map of how its ideas co
 
 ## Check before filing
 
-- Extract each inline `<script>` and run `node --check` on it to catch syntax errors.
-- Check that every `../_assets/...` path resolves from the page's folder.
-- Verify every number a visual displays in the topic's `runs/` check script.
-- Without JavaScript, the page must still make sense: prose and a static SVG carry the
-  argument, and the interactive deepens it.
+1. Extract each inline `<script>` and run `node --check` on it.
+2. Run `node .claude/skills/latex-math/check_math.js <page>` for the maths.
+3. Check every `../_assets/...` path resolves from the page's folder.
+4. Render it: `sh .claude/skills/rich-visuals/serve.sh` serves the library on a free local port; open
+   the page with the Playwright browser tools, take a screenshot, read the console for errors, move
+   each control once, and look at it in dark mode too. Stop the server with `kill <pid>` afterwards.
+5. Verify every number a visual displays against the topic's `runs/` or its sources.
+6. Without JavaScript the page must still make sense: prose and a static SVG carry the argument,
+   and the interactive deepens it.
 
 ## Example: a D3 line chart that animates in
 

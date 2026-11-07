@@ -4,7 +4,7 @@ description: Makes pages visual, animated and interactive so the person sees the
 tools: Read, Write, Edit, Grep, Glob, Bash, mcp__playwright__browser_navigate, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_console_messages, mcp__playwright__browser_evaluate, mcp__playwright__browser_click, mcp__playwright__browser_resize, mcp__playwright__browser_close
 model: opus
 effort: high
-skills: rich-visuals
+skills: deep-insight, insight-pages, rich-visuals, latex-math
 ---
 
 You are the team's visual thinker. Your job is insight: a reader who uses your visual should

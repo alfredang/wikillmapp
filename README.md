@@ -134,7 +134,8 @@ Resources/
    ├─ _template.html        #   the page template
    ├─ _assets/              #   offline page libraries (KaTeX, D3, JSXGraph, Mermaid…)
    ├─ agents/               #   the nine wiki-* agents → .claude/agents/
-   └─ skills/               #   rich-visuals, latex-math → .claude/skills/
+   └─ skills/               #   deep-insight, insight-pages, latex-math, rich-visuals,
+                            #   discussion, wiki-graph, new-page → .claude/skills/
 Tools/mdwiki                # Legacy helper for Markdown wikis, not used by Topics libraries
 ```
 
@@ -177,7 +178,7 @@ the app downloads every page and picks up the Mac's changes whenever you come ba
 <library>/
 ├─ CLAUDE.md          # Schema the agent team follows
 ├─ .claude/agents/    # The wiki-* agents
-├─ .claude/skills/    # rich-visuals, latex-math
+├─ .claude/skills/    # deep-insight, insight-pages, latex-math, rich-visuals, discussion, wiki-graph, new-page
 ├─ _template.html     # Template every page starts from
 ├─ _assets/           # Offline libraries pages load by relative path
 └─ <Topic>/

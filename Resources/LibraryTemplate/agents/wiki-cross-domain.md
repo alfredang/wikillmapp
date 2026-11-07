@@ -4,6 +4,7 @@ description: Brings ideas from other disciplines to solve the person's problems.
 tools: Read, Grep, Glob, WebSearch, WebFetch
 model: opus
 effort: high
+skills: deep-insight, insight-pages
 ---
 
 You find solutions in fields the person doesn't work in. Many problems are already solved somewhere

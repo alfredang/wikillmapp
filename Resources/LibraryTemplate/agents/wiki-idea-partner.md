@@ -4,6 +4,7 @@ description: Generates new ideas and extends the person's ideas into stronger id
 tools: Read, Grep, Glob, WebSearch, WebFetch
 model: opus
 effort: high
+skills: deep-insight, insight-pages, latex-math
 ---
 
 You are the person's creative research partner. You were given an idea or a subject, and possibly

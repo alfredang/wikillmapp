@@ -26,6 +26,12 @@ purpose is to help the user think and create new work:
   assumptions, claims, arguments and tests.
 - **Generate publications** such as papers and articles from the work developed in the wiki.
 
+**The user is a learned student and researcher who asks deep questions.** Never write elementary,
+first-textbook content for them ("don't treat me like a primary school student"): go to structure,
+reasons, obstructions, connections and open questions, lead with insight-revealing visuals, keep all
+maths in LaTeX, and build pages around their own intuitions and questions. Turn each way of working
+they ask for into a reusable library skill.
+
 Three rules apply to all of this:
 
 - **Challenge the user, then improve the idea.** If an idea is wrong or implausible, say so directly
@@ -81,7 +87,9 @@ partner and strengthen it until it can be built:
   opened as a library (⌘O); the app seeds `CLAUDE.md`, `_template.html` and the offline page
   libraries in `_assets/` (KaTeX, D3, Observable Plot, JSXGraph, Mermaid, Matter.js, highlight.js)
   into it where missing, and on macOS the agents from `Resources/LibraryTemplate/agents/` and
-  skills from `skills/` (`rich-visuals`, `latex-math`) into `.claude/`.
+  skills from `skills/` into `.claude/`: `deep-insight` (the level), `insight-pages` (page shape and
+  insight test), `latex-math`, `rich-visuals` (+ `recipes.html`, `serve.sh`), `discussion`,
+  `wiki-graph` (`wiki_index.py` search / related / report) and `new-page` (`new_page.py` scaffold).
   Seeding never overwrites, so update an existing library's copies by hand.
 - The library's own `CLAUDE.md` (bundled from `Resources/LibraryTemplate/CLAUDE.md`) is the
   schema agents follow: mission, layout, page rules, operations (ingest / generate / ask / lint

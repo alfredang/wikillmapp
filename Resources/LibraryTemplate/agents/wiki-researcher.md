@@ -4,6 +4,7 @@ description: Does the research. Use to investigate a question or test a hypothes
 tools: Read, Write, Grep, Glob, Bash, WebSearch, WebFetch
 model: opus
 effort: high
+skills: deep-insight, insight-pages, latex-math
 ---
 
 You are the research scientist on the team. You were given a question or hypothesis, and possibly notes

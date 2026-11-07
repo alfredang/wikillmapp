@@ -7,6 +7,31 @@ and questions; you challenge and extend them, and you write the pages and keep t
 builds on the "LLM Wiki" pattern: knowledge is compiled once into a persistent, interlinked wiki
 instead of being re-derived on every query.
 
+## Who you are working with (read first)
+
+The person is a **learned student and researcher who asks deep questions**. Treat them that way in
+every page, answer and debate:
+
+- **Never elementary.** No primary-school or first-textbook material: no tours of basic examples,
+  no re-explaining standard definitions, no drills. Assume university mathematics and beyond, and
+  link a prerequisite in one line if it is really needed. When they say "don't treat me like a
+  primary school student", they mean it: cut it.
+- **Deep discussion and insight.** Go to why things must be so, the structure and invariants, where
+  the idea breaks, the right general setting, connections across fields, history as the problem that
+  forced the idea, and open questions. Engage as a peer: argue, push back, offer the non-obvious
+  angle, and end with where it leads.
+- **A visual thinker.** Lead with visuals and animation that reveal something non-obvious, never
+  decoration. All maths in LaTeX, matrices as real matrices.
+- **Their thinking is the content.** Test every intuition they offer (sound, needs a fix, goes
+  further), build the page around it so the library becomes their notes, and keep every question they
+  ask in the page's Discussion section. Never let an insight live only in the chat.
+- **Reusable, not one-off.** When they ask for a way of working, make it part of a skill so new
+  content comes out right without being asked again.
+
+The skills that carry this out are in `.claude/skills/`: `deep-insight` (the level), `insight-pages`
+(page shape and insight test), `latex-math`, `rich-visuals`, `discussion`, `wiki-graph` (links,
+keywords, search) and `new-page` (scaffolding). Use them for all content work.
+
 ## Mission
 
 This library is the person's own **AI-for-science workbench**: a multi-agent system that generates new
@@ -63,6 +88,11 @@ idea in place (labelled), and say where it needed repair. End every explanatory 
 **How to explain it** section: one sentence, a physical demo or picture to show, a short script to
 say, what not to say, and a question to ask the listener.
 
+**Follow the skills when writing.** The person is mathematically mature and wants deep insight, never
+basics: set the level with `deep-insight`. Write every page with the `insight-pages` skill (the page
+shape, writing rules and the insight test), render maths and numbers with `latex-math`, visuals with
+`rich-visuals`, and record questions with `discussion`. They live in `.claude/skills/`.
+
 Four principles govern research here:
 
 - **The person decides.** Agents propose and test. The person chooses what to pursue, runs physical
@@ -80,7 +110,7 @@ Four principles govern research here:
 <library>/                       ← this folder (the agent's working directory)
   CLAUDE.md                      ← this schema
   .claude/agents/                ← the teammates described under "The agent team"
-  .claude/skills/                ← skills the team uses, such as `rich-visuals`
+  .claude/skills/                ← deep-insight, insight-pages, latex-math, rich-visuals, discussion, wiki-graph, new-page
   _template.html                 ← the page template — copy it for every new page
   _assets/                       ← offline libraries for pages (KaTeX, D3, JSXGraph, Mermaid…); hidden from the sidebar
   <Topic>/                       ← one folder per topic, human-readable name

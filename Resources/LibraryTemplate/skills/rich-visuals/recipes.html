@@ -1,0 +1,114 @@
+<!-- Recipes for library pages. Copy the block you need into a page (inside a .card), give the
+     ids unique names, and keep the template CSS variables so light and dark mode both work.
+     Libraries load from _assets/ with the page's ../ prefix (see SKILL.md). -->
+
+<!-- 1. PREDICT, THEN REVEAL — no library. The reader commits to a guess before the answer shows. -->
+<div class="card predict" id="p1">
+  <p><strong>Predict:</strong> rotate a book 90° about x, then 90° about y. Do you get the same as y then x?</p>
+  <div class="choices">
+    <button data-v="same">Same</button><button data-v="different">Different</button>
+  </div>
+  <div class="reveal" hidden>
+    <p class="verdict"></p>
+    <p>Rotations about different axes don't commute: the order changes the result. That single fact is where quantised angular momentum comes from.</p>
+  </div>
+</div>
+<style>
+  .predict .choices { display: flex; gap: 8px; flex-wrap: wrap; }
+  .predict button { font: inherit; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line);
+                    background: var(--card); color: var(--ink); cursor: pointer; }
+  .predict button.picked { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .predict .reveal { margin-top: 10px; animation: rv .5s ease; }
+  @keyframes rv { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .predict .reveal { animation: none; } }
+</style>
+<script>
+(function () {
+  var box = document.getElementById("p1"), answer = "different";
+  box.querySelectorAll("button").forEach(function (b) {
+    b.onclick = function () {
+      box.querySelectorAll("button").forEach(function (x) { x.classList.toggle("picked", x === b); });
+      var r = box.querySelector(".reveal"); r.hidden = false;
+      r.querySelector(".verdict").innerHTML = b.dataset.v === answer
+        ? "<strong>Right.</strong>" : "<strong>Not quite</strong>, and that surprise is the point.";
+    };
+  });
+})();
+</script>
+
+<!-- 2. STEPPER WITH PLAY / PAUSE / SCRUB — no library. Walk through a process one state at a time. -->
+<div class="card stepper" id="s1">
+  <svg viewBox="0 0 420 120" role="img" aria-label="A ladder of states m = -2 to 2; the highlighted state moves up one rung per step" style="width:100%;height:auto"></svg>
+  <div class="controls">
+    <button class="play" aria-label="Play">▶</button>
+    <input type="range" min="0" max="4" value="0" step="1" aria-label="Step">
+    <span class="readout" aria-live="polite"></span>
+  </div>
+</div>
+<style>
+  .stepper .controls { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .stepper input[type=range] { flex: 1; accent-color: var(--accent); }
+  .stepper button { font: inherit; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line);
+                    background: var(--card); color: var(--ink); cursor: pointer; }
+  .stepper .readout { min-width: 9em; color: var(--muted); font-size: 14px; }
+  .stepper circle { transition: fill .35s, r .35s; }
+  @media (prefers-reduced-motion: reduce) { .stepper circle { transition: none; } }
+</style>
+<script>
+(function () {
+  var root = document.getElementById("s1"), svg = root.querySelector("svg"), slider = root.querySelector("input"),
+      play = root.querySelector(".play"), out = root.querySelector(".readout"), timer = null, ns = "http://www.w3.org/2000/svg";
+  var states = [-2, -1, 0, 1, 2], dots = states.map(function (m, i) {
+    var c = document.createElementNS(ns, "circle");
+    c.setAttribute("cx", 50 + i * 80); c.setAttribute("cy", 60); c.setAttribute("r", 14);
+    svg.appendChild(c); return c;
+  });
+  function show(k) {
+    dots.forEach(function (c, i) {
+      c.setAttribute("fill", i === k ? "var(--accent)" : "var(--line)"); c.setAttribute("r", i === k ? 20 : 14);
+    });
+    slider.value = k; out.textContent = "m = " + states[k] + (k === 4 ? " (top: the ladder stops)" : "");
+  }
+  function stop() { clearInterval(timer); timer = null; play.textContent = "▶"; play.setAttribute("aria-label", "Play"); }
+  play.onclick = function () {
+    if (timer) return stop();
+    play.textContent = "❚❚"; play.setAttribute("aria-label", "Pause");
+    timer = setInterval(function () { var k = +slider.value; if (k >= 4) return stop(); show(k + 1); }, 900);
+  };
+  slider.oninput = function () { stop(); show(+slider.value); };
+  show(0);
+})();
+</script>
+
+<!-- 3. PHYSICS SCENE — Matter.js. Load ../../_assets/matter/matter.min.js first. -->
+<div class="card"><div id="m1" style="width:100%;aspect-ratio:2/1"></div>
+  <button id="m1drop">Drop a ball</button></div>
+<script>
+(function () {
+  var M = Matter, host = document.getElementById("m1"), w = host.clientWidth || 600, h = w / 2;
+  var engine = M.Engine.create(), render = M.Render.create({ element: host, engine: engine,
+      options: { width: w, height: h, wireframes: false, background: "transparent" } });
+  var css = getComputedStyle(document.documentElement);
+  var accent = css.getPropertyValue("--accent").trim() || "#6d4aff", muted = css.getPropertyValue("--muted").trim() || "#888";
+  M.Composite.add(engine.world, [
+    M.Bodies.rectangle(w / 2, h + 10, w, 20, { isStatic: true, render: { fillStyle: muted } }),
+    M.Bodies.rectangle(w * 0.35, h * 0.6, w * 0.5, 10, { isStatic: true, angle: 0.25, render: { fillStyle: muted } })
+  ]);
+  document.getElementById("m1drop").onclick = function () {
+    M.Composite.add(engine.world, M.Bodies.circle(w * 0.2, 10, 14, { restitution: 0.6, render: { fillStyle: accent } }));
+  };
+  M.Render.run(render); M.Runner.run(M.Runner.create(), engine);
+})();
+</script>
+
+<!-- 4. TOPIC HOME HERO — Mermaid map of how the ideas build on each other. Load ../_assets/mermaid/mermaid.min.js. -->
+<figure class="card">
+  <pre class="mermaid">flowchart LR
+  A["Rotations don't commute"] --> B["Commutator [Jx, Jy] = iħJz"]
+  B --> C["Ladder operators J±"]
+  C --> D["Quantised m, |J| = √(j(j+1))ħ"]
+  D --> E["Adding two spins"]</pre>
+  <figcaption>Read left to right: one physical fact, non-commuting rotations, produces every quantum number.</figcaption>
+</figure>
+<script>mermaid.initialize({ startOnLoad: true, securityLevel: "strict",
+  theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "neutral" });</script>
