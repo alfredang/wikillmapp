@@ -1,6 +1,11 @@
 import SwiftUI
 import WebKit
 
+extension Notification.Name {
+    /// Scroll the page `object` (a URL) to the element whose id is `userInfo["anchor"]`.
+    static let wikiScrollToSection = Notification.Name("wiki.scrollToSection")
+}
+
 /// Renders one HTML page of the library in a WKWebView, like a Claude artifact.
 ///
 /// - Read access covers the whole library, so relative links, images and pages in sibling
@@ -71,7 +76,34 @@ struct HTMLPageView {
         /// Scroll offset to return to once a rewritten page has reloaded.
         var restoreScrollY: Double?
 
-        init(_ parent: HTMLPageView) { self.parent = parent }
+        weak var webView: WKWebView?
+        private var scrollObserver: NSObjectProtocol?
+
+        init(_ parent: HTMLPageView) {
+            self.parent = parent
+            super.init()
+            // The header's Discussion button (and any other jump) asks the page on screen to
+            // scroll to a section.
+            scrollObserver = NotificationCenter.default.addObserver(
+                forName: .wikiScrollToSection, object: nil, queue: .main
+            ) { [weak self] note in
+                guard let self, let webView = self.webView,
+                      let page = note.object as? URL,
+                      page.standardizedFileURL == self.loadedURL?.standardizedFileURL,
+                      let anchor = note.userInfo?["anchor"] as? String else { return }
+                let id = anchor.replacingOccurrences(of: "'", with: "")
+                webView.evaluateJavaScript("""
+                (function(){var e=document.getElementById('\(id)');
+                 if(e){e.scrollIntoView({behavior:'smooth',block:'start'});
+                       var d=e.querySelector('details.qa');if(d&&!e.querySelector('details.qa[open]'))d.open=true;}
+                 else{window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});}})();
+                """)
+            }
+        }
+
+        deinit {
+            if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) }
+        }
 
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
             finished = false
@@ -227,6 +259,7 @@ struct HTMLPageView {
 extension HTMLPageView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let webView = makeWebView(context.coordinator)
+        context.coordinator.webView = webView
         load(webView, context.coordinator)
         return webView
     }
@@ -236,6 +269,7 @@ extension HTMLPageView: NSViewRepresentable {
 extension HTMLPageView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let webView = makeWebView(context.coordinator)
+        context.coordinator.webView = webView
         load(webView, context.coordinator)
         return webView
     }

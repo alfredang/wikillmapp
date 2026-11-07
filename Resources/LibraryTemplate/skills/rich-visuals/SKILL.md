@@ -22,7 +22,7 @@ sidebar, and pages may read any file inside the library. **Never use a CDN.**
 | JSXGraph 1.14 | `jsxgraph/jsxgraphcore.js`, `jsxgraph.css` | Draggable geometry and function plots that keep their constraints: points, lines, circles, sliders, curves |
 | Mermaid 12 | `mermaid/mermaid.min.js` | Flowcharts, sequence, state, class, timeline and mind-map diagrams written as text |
 | Matter.js 0.20 | `matter/matter.min.js` | 2D physics: bodies, gravity, collisions, springs, constraints |
-| zoom | `zoom/zoom.js` | Click-to-zoom viewer for diagrams, images and figures (scroll/pinch, drag, Esc) |
+| zoom | `zoom/zoom.js` | "⤢ Enlarge" button on every figure: full-window popup with zoom and pan |
 | highlight.js 11 | `highlight/highlight.min.js`, `github.min.css`, `github-dark.min.css` | Colour-coded code samples |
 
 Plain inline SVG and vanilla JS also work, need no library, and are often enough. The
@@ -58,12 +58,12 @@ A visual the reader has to squint at has failed. On a normal page width (about 7
   and use `font-size` of 13 or more in viewBox units scaled for that width.
 - **Wide or dense figures** (big trees, tables of diagrams, Cayley tables): give them their own
   full-width card, or let the reader scroll horizontally inside it, rather than shrinking them.
-- **Click to zoom.** Include `<script defer src="../../_assets/zoom/zoom.js"></script>` (the `new-page`
-  script adds it). Mermaid diagrams, images and `figure.zoom` open full screen on click; other
-  sizeable SVGs and canvases get a ⤢ button so their own controls keep working. Add class `zoom` to
-  a figure to make it click-to-zoom, `nozoom` to opt out. The app adds zoom to every page anyway, but
-  include it so pages zoom in a plain browser too. Zoom is the backup, not the fix: a figure must be
-  legible at page width first.
+- **Enlarge button.** Include `<script defer src="../../_assets/zoom/zoom.js"></script>` (the
+  `new-page` script adds it). Every diagram, image, SVG figure and canvas then gets a visible
+  "⤢ Enlarge" button that opens it in a full-window popup with zoom in / out, fit, 1:1 and pan; the
+  figure itself stays clickable, so links and controls inside it keep working. Add class `nozoom` to
+  opt a figure out. The app adds this to every page anyway, but include it so pages work in a plain
+  browser too. Enlarge is the backup, not the fix: a figure must be legible at page width first.
 
 ## Include with a relative path
 
@@ -172,8 +172,8 @@ it. A topic or subtopic `index.html` opens with a visual map of how its ideas co
 1. Extract each inline `<script>` and run `node --check` on it.
 2. Run `node .claude/skills/latex-math/check_math.js <page>` for the maths.
 3. Check every `../_assets/...` path resolves from the page's folder.
-4. Check every figure is legible at page width (text ≥ 13 px, Mermaid ≤ 5 nodes per row) and opens in
-   the zoom viewer.
+4. Check every figure is legible at page width (text ≥ 13 px, Mermaid ≤ 5 nodes per row) and opens with its
+   Enlarge button.
 5. Render it: `sh .claude/skills/rich-visuals/serve.sh` serves the library on a free local port; open
    the page with the Playwright browser tools, take a screenshot, read the console for errors, move
    each control once, and look at it in dark mode too. Stop the server with `kill <pid>` afterwards.

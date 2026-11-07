@@ -120,12 +120,17 @@ struct TopicsRootView: View {
         .task {
             store.restoreVaultIfNeeded()
             agents.openLocal = { url in store.select(url); pane = nil }
+            VoiceNote.shared.vocabulary = { [store] in store.voiceVocabulary() }
             if let root = store.rootURL { agents.setWorkspace(root.path) }
             reloadTeam()
             #if DEBUG
             // `-debugSelect <path relative to the library>` opens a topic/page (screenshots, UI checks).
             if let rel = UserDefaults.standard.string(forKey: "debugSelect"), let root = store.rootURL {
                 store.select(root.appendingPathComponent(rel))
+            }
+            // `-debugTranscribe <audio file>` checks speech-to-text (writes <file>.txt).
+            if let file = UserDefaults.standard.string(forKey: "debugTranscribe") {
+                Task { await VoiceNote.shared.debugTranscribe(file) }
             }
             // `-debugPane agents` opens a pane outside the topics tree.
             if let name = UserDefaults.standard.string(forKey: "debugPane") {

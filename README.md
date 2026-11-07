@@ -27,10 +27,11 @@ your own intuitions, tests and extends them, and turns them into notes you can e
   as soon as the file changes. Each library ships its own copies of KaTeX, D3, Observable Plot,
   JSXGraph, Mermaid, Matter.js and highlight.js in `_assets/`, for diagrams, animations, draggable
   constructions, simulations and charts. No CDNs.
-- 🎙 **Talk instead of typing** — with a dictation app such as LahLah Voice, speak while reading a
-  page: the words go straight into Claude Code's prompt, ready to send.
-- 🔍 **Click to zoom** — diagrams, images and figures open full screen with pinch/scroll zoom and
-  drag to pan, on every page.
+- 🎙 **Voice notes to the agent** — WhatsApp-style: hold the mic under the terminal (or the right
+  ⌥ key), talk, release to send; slide left to cancel, up for hands-free. Whisper turns speech into
+  text on your Mac, tuned to your library's vocabulary, so nothing leaves the machine.
+- 🔍 **Enlarge any figure** — every diagram and image has an Enlarge button that opens it in a
+  full-window popup with zoom in/out, fit and pan.
 - ∑ **LaTeX everywhere** — formulas are written as LaTeX and typeset by KaTeX; the app renders
   LaTeX on any page that contains it, even one that forgot to load KaTeX.
 - 🔗 **Obsidian-style links** — relative links and `[[wikilinks]]`, with hover previews, backlinks
@@ -97,6 +98,7 @@ iPhone and iPad:
 | UI | SwiftUI (multiplatform: iOS 17+ / macOS 14+) |
 | Pages | `WKWebView` with a page script for wikilinks, hover previews and KaTeX |
 | Page libraries | KaTeX, D3, Observable Plot, JSXGraph, Mermaid, Matter.js, highlight.js (offline) |
+| Speech | [WhisperKit](https://github.com/argmaxinc/argmax-oss-swift) (Whisper large-v3 turbo, on-device) |
 | Graph view | [3d-force-graph](https://github.com/vasturiano/3d-force-graph) (MIT, bundles three.js) |
 | Markdown | Custom dependency-free block parser with native SwiftUI rendering |
 | Terminal | [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) 1.11.2 (macOS) |

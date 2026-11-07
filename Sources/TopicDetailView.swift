@@ -60,13 +60,10 @@ struct TopicDetailView: View {
                 Text(title(isDir: isDir, page: page))
                     .font(.title3.weight(.semibold))
                     .lineLimit(1)
-                Text(subtitle(isDir: isDir))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                Breadcrumbs(url: url, isDir: isDir, count: isDir ? subtitleCount : nil)
             }
             Spacer(minLength: 8)
+            PageStepper(url: url)
             if let page, isHTML(page) {
                 Picker("View", selection: $modeRaw) {
                     ForEach(PageMode.allCases) { m in
@@ -83,6 +80,14 @@ struct TopicDetailView: View {
                     .help("New page in this folder")
                 Button { onNewSubtopic(url) } label: { Image(systemName: "folder.badge.plus") }
                     .help("New subtopic in this folder")
+            }
+            if let page, isHTML(page) {
+                Button {
+                    NotificationCenter.default.post(name: .wikiScrollToSection, object: page,
+                                                    userInfo: ["anchor": "discussion"])
+                } label: { Image(systemName: "bubble.left.and.text.bubble.right") }
+                    .keyboardShortcut("d", modifiers: [.command, .option])
+                    .help("Go to the Discussion: your questions on this page (⌥⌘D)")
             }
             if let page {
                 Button { NSWorkspace.shared.open(page) } label: { Image(systemName: "safari") }
@@ -102,6 +107,10 @@ struct TopicDetailView: View {
         if let page, isHTML(page), let t = store.links.pages[page.standardizedFileURL]?.title, !t.isEmpty { return t }
         if isDir { return url.lastPathComponent == TopicLibrary.sourcesFolder ? "Sources" : url.lastPathComponent }
         return url.lastPathComponent
+    }
+
+    private var subtitleCount: Int {
+        store.rootNode.flatMap { Self.find(url, in: $0) }?.pageCount ?? 0
     }
 
     private func subtitle(isDir: Bool) -> String {
@@ -162,6 +171,7 @@ struct TopicDetailView: View {
                 }
             }
             LinksBar(page: page)
+            PageFooterNav(url: url)
         }
     }
 
@@ -495,6 +505,106 @@ struct LibraryHomeView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Color(nsColor: .textBackgroundColor))
+    }
+}
+// MARK: - Breadcrumbs and previous / next
+
+/// Library › Topic › Subtopic, each a link, under the page title.
+private struct Breadcrumbs: View {
+    @EnvironmentObject var store: VaultStore
+    let url: URL
+    let isDir: Bool
+    var count: Int?
+
+    var body: some View {
+        HStack(spacing: 4) {
+            crumb("Library", target: nil)
+            ForEach(chain, id: \.self) { folder in
+                Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold)).foregroundStyle(.tertiary)
+                crumb(store.sidebarLabel(for: FileNode(url: folder, name: folder.lastPathComponent,
+                                                      isDirectory: true, children: nil)), target: folder)
+            }
+            if let count {
+                Text("· \(count) page\(count == 1 ? "" : "s")").foregroundStyle(.secondary)
+            }
+        }
+        .font(.caption)
+        .lineLimit(1)
+        .truncationMode(.middle)
+    }
+
+    /// The folders above this item; a folder's own name is the page title, so it's left out.
+    private var chain: [URL] {
+        guard let root = store.rootURL else { return [] }
+        let dir = url.deletingLastPathComponent()
+        return TopicLibrary.folderChain(root: root, to: dir)
+    }
+
+    private func crumb(_ title: String, target: URL?) -> some View {
+        Button(title) {
+            if let target { store.select(target) } else { store.selectedFileURL = nil }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.accent)
+        .help(target.map { store.relativePath($0) } ?? "Library home")
+    }
+}
+
+/// ‹ › buttons in the header: the previous and next page in the topic's reading order.
+private struct PageStepper: View {
+    @EnvironmentObject var store: VaultStore
+    let url: URL
+
+    var body: some View {
+        let n = store.neighbours(of: url)
+        HStack(spacing: 2) {
+            Button { if let p = n.previous { store.select(p.url) } } label: { Image(systemName: "chevron.left") }
+                .disabled(n.previous == nil)
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+                .help(n.previous.map { "Previous: \(store.sidebarLabel(for: $0))  ⌥⌘←" } ?? "First page of this topic")
+            Button { if let p = n.next { store.select(p.url) } } label: { Image(systemName: "chevron.right") }
+                .disabled(n.next == nil)
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                .help(n.next.map { "Next: \(store.sidebarLabel(for: $0))  ⌥⌘→" } ?? "Last page of this topic")
+        }
+    }
+}
+
+/// "‹ Previous page · Next page ›" under the page, for when the reader reaches the end.
+private struct PageFooterNav: View {
+    @EnvironmentObject var store: VaultStore
+    let url: URL
+
+    var body: some View {
+        let n = store.neighbours(of: url)
+        if n.previous != nil || n.next != nil {
+            VStack(spacing: 0) {
+                Divider()
+                HStack {
+                    if let p = n.previous { link(p, forward: false) }
+                    Spacer(minLength: 16)
+                    if let p = n.next { link(p, forward: true) }
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 8)
+            }
+        }
+    }
+
+    private func link(_ node: FileNode, forward: Bool) -> some View {
+        Button { store.select(node.url) } label: {
+            HStack(spacing: 6) {
+                if !forward { Image(systemName: "chevron.left") }
+                VStack(alignment: forward ? .trailing : .leading, spacing: 0) {
+                    Text(forward ? "Next" : "Previous").font(.caption2).foregroundStyle(.secondary)
+                    Text(store.sidebarLabel(for: node)).font(.callout).lineLimit(1)
+                }
+                if forward { Image(systemName: "chevron.right") }
+            }
+            .foregroundStyle(Theme.accent)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 #endif

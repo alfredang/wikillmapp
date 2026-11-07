@@ -109,6 +109,35 @@ final class VaultStore: ObservableObject {
     }
 
     #if os(macOS)
+    /// Terms to bias speech recognition toward, most relevant first: the page on screen (title
+    /// and keywords), then its topic's page titles, then other titles in the library. Whisper
+    /// takes a short prompt, so it is capped.
+    func voiceVocabulary(limit: Int = 160) -> [String] {
+        var terms: [String] = []
+        var seen = Set<String>()
+        func add(_ term: String) {
+            let t = term.components(separatedBy: " · ").first?.trimmingCharacters(in: .whitespaces) ?? ""
+            guard t.count > 2, t.count < 60, !t.allSatisfy(\.isNumber), seen.insert(t.lowercased()).inserted else { return }
+            terms.append(t)
+        }
+        let current = selectedFileURL.flatMap { pageURL(for: $0) }?.standardizedFileURL
+        if let current, let page = links.pages[current] {
+            add(page.title)
+            page.keywords.forEach(add)
+        }
+        let topic = current.flatMap { url -> String? in
+            guard let root = rootURL?.standardizedFileURL.path, url.path.hasPrefix(root + "/") else { return nil }
+            return url.path.dropFirst(root.count + 1).split(separator: "/").first.map(String.init)
+        }
+        let pages = links.pages.values.sorted { $0.url.path < $1.url.path }
+        if let topic {
+            for page in pages where page.url.path.contains("/\(topic)/") { add(page.title) }
+        }
+        for page in pages { add(page.title) }
+        for page in pages { page.keywords.forEach(add) }
+        return Array(terms.prefix(limit))
+    }
+
     /// Tells the agent which page is on screen, so "this page" means what the person sees and
     /// their questions land in that page's Discussion section. Written to
     /// `.claude/viewing.nosync`: iCloud Drive doesn't sync `.nosync` items, so following links
@@ -378,6 +407,40 @@ final class VaultStore: ObservableObject {
             parts.removeLast()
         }
         return parts.isEmpty ? node.displayName : parts.joined(separator: " · ")
+    }
+
+    // MARK: - Reading order (previous / next)
+
+    /// The topic's pages in sidebar order, the way a reader goes through it: each folder (its
+    /// overview page), then its subfolders, then its pages. `raw/`, `runs/`, logs and other
+    /// non-page files are skipped.
+    func readingOrder(inTopicOf url: URL) -> [FileNode] {
+        guard let root = rootURL, let rootNode else { return [] }
+        let dir = isDirectory(url) ? url : url.deletingLastPathComponent()
+        guard let topicURL = TopicLibrary.folderChain(root: root, to: dir).first?.standardizedFileURL,
+              let topic = rootNode.children?.first(where: { $0.url.standardizedFileURL == topicURL })
+        else { return [] }
+        var order: [FileNode] = []
+        func walk(_ node: FileNode) {
+            order.append(node)
+            for child in sidebarChildren(of: node) {
+                if child.isDirectory {
+                    if !["raw", "runs"].contains(child.name), !child.name.hasPrefix("_") { walk(child) }
+                } else if child.isHTML {
+                    order.append(child)
+                }
+            }
+        }
+        walk(topic)
+        return order
+    }
+
+    /// The pages before and after `url` in its topic's reading order.
+    func neighbours(of url: URL) -> (previous: FileNode?, next: FileNode?) {
+        let order = readingOrder(inTopicOf: url)
+        let target = url.standardizedFileURL
+        guard let i = order.firstIndex(where: { $0.url.standardizedFileURL == target }) else { return (nil, nil) }
+        return (i > 0 ? order[i - 1] : nil, i + 1 < order.count ? order[i + 1] : nil)
     }
 
     /// Children in sidebar order: folders first (by name, so "NN " prefixes order them),

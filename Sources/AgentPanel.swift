@@ -197,6 +197,17 @@ final class AgentPanelModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { session.pasteText(text) }
     }
 
+    /// Sends a voice note's text as a message: pasted after whatever is already typed, then
+    /// submitted, like pressing send in a chat.
+    func submit(_ text: String, to kind: AgentKind = .claude) {
+        UserDefaults.standard.set(true, forKey: "agentPanelVisible")
+        select(kind)
+        if tab(kind)?.exited == true { restart(kind, resume: true) }
+        guard let tab = tab(kind) else { return }
+        let session = session(for: tab)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { session.submitText(text) }
+    }
+
     /// Types an instruction into an agent (starting it if needed) and submits it.
     func send(_ prompt: String, to kind: AgentKind = .claude) {
         select(kind)
@@ -238,6 +249,8 @@ struct AgentPanel: View {
                 if model.tab(model.selected)?.exited == true { exitOverlay }
             }
             .clipped()
+            Divider()
+            VoiceNoteBar()
         }
         .background(Color(nsColor: .textBackgroundColor))
         .onAppear { model.select(model.selected) }
@@ -562,6 +575,14 @@ final class AgentTerminalSession: NSObject, LocalProcessTerminalViewDelegate {
             view.send(txt: text)
         }
         focus()
+    }
+
+    /// Pastes text at the prompt and presses Return a moment later (sent together, a TUI
+    /// would treat the Return as part of the paste).
+    func submitText(_ text: String) {
+        pasteText(text)
+        let view = view
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { view.send(txt: "\r") }
     }
 
     func setActive(_ active: Bool) {

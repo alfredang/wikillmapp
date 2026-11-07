@@ -140,10 +140,15 @@ partner and strengthen it until it can be built:
 - Tabs: **Claude Code** (`claude --dangerously-skip-permissions --model claude-opus-5-5 --effort
   high`, resumes with `--continue`),
   **Codex**, **Terminal** — all started in the library root so `CLAUDE.md` applies.
-- **Voice:** dictation apps such as the user's LahLah Voice paste what is said into the focused
-  app. A paste on a page (`PageWebView`, not in a field on the page) goes to Claude Code's prompt
-  via `AgentPanelModel.paste`, opening the panel and focusing the terminal without submitting.
-  LahLah lists Wiki LLM (`com.tertiaryinfotech.markdownapp`) as an AI app, so it pastes verbatim.
+- **Voice notes (WhatsApp / Telegram style):** `VoiceNote.swift` puts a bar under the agent's
+  terminal. Hold the mic (or the right ⌥ key) to talk, release to send; slide left to cancel; slide
+  up or tap for hands-free with a Send button. Audio (16 kHz mono via `AVAudioEngine`) is
+  transcribed on the Mac by WhisperKit (`argmax-oss-swift`, model `large-v3-v20240930_626MB`,
+  stored in `~/Library/Application Support/Wiki LLM/Whisper`, not iCloud), with a prompt of the
+  open page's title/keywords and library titles (`VaultStore.voiceVocabulary`), then sent via
+  `AgentPanelModel.submit`. Debug: `-debugTranscribe <audio file>` writes `<file>.txt`.
+- **Dictation apps** (e.g. LahLah Voice, Fn to dictate) also work: a paste on a page goes to the
+  prompt (`PageWebView` → `AgentPanelModel.paste`).
 - Sidebar context menus offer Outline / Lint / Ingest on folders (`WikiAction`). Each types a
   single-line instruction scoped to that folder into Claude Code, waiting until it is ready and
   never while a startup prompt such as the folder trust check is on screen.
@@ -172,7 +177,8 @@ Legacy helper for Markdown wikis (pre-HTML). Not used by the Topics library.
   detail area = `TopicDetailView` + draggable divider (`PanelResizeHandle`) + `AgentPanel`.
 - **Maths is LaTeX** (`\( … \)`, `\[ … \]`). `HTMLPageView` typesets it with the library's
   `_assets/katex` after load on any page that doesn't load KaTeX itself (`renderMath`), and adds
-  click-to-zoom (`_assets/zoom/zoom.js`, read from the app bundle) to every page.
+  an "⤢ Enlarge" button on every figure (`_assets/zoom/zoom.js`, read from the app bundle) that
+  opens it in a full-window popup with zoom controls.
 - `TopicDetailView`: folder → its `index.html` (or `FolderOverview` cards); HTML page →
   `HTMLPageView` (WKWebView) in Preview / Split / Source (`HTMLSourceEditor`); `.md` →
   `MarkdownEditorView`. `LibraryHomeView` when nothing is selected. `LocalFileGate` fetches a
