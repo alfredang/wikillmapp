@@ -35,6 +35,8 @@ targets:
       - Sources
       - path: Resources/LibraryTemplate
         type: folder
+      - path: Resources/Graph
+        type: folder
     dependencies:
       - package: SwiftTerm
     settings:

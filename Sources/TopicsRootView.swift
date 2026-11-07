@@ -4,11 +4,13 @@ import AppKit
 
 /// Panes outside the topics tree.
 enum SupportPane: String, CaseIterable, Identifiable {
-    case settings, feedback, about
+    case agents, graph, settings, feedback, about
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
     var symbol: String {
         switch self {
+        case .agents:   return "person.3"
+        case .graph:    return "point.3.connected.trianglepath.dotted"
         case .settings: return "gearshape"
         case .feedback: return "bubble.left.and.bubble.right"
         case .about:    return "info.circle"
@@ -19,6 +21,7 @@ enum SupportPane: String, CaseIterable, Identifiable {
 enum SidebarSelection: Hashable {
     case node(URL)
     case pane(SupportPane)
+    case agent(URL)
 }
 
 /// What a name prompt creates.
@@ -63,7 +66,12 @@ struct TopicsRootView: View {
     @ObservedObject private var agents = AgentPanelModel.shared
 
     @State private var pane: SupportPane?
+    @State private var team: [AgentDefinition] = []
+    /// The agent shown while `pane` is `.agents`; nil shows the whole team.
+    @State private var selectedAgent: URL?
     @State private var expanded: Set<URL> = []
+    /// Sidebar sections the person has collapsed (comma-separated names), kept across launches.
+    @AppStorage("collapsedTopicSections") private var collapsedSectionsRaw = ""
     @State private var namePrompt: NamePrompt?
     @State private var nameText = ""
     @State private var deleteTarget: URL?
@@ -79,16 +87,27 @@ struct TopicsRootView: View {
     private var selection: Binding<SidebarSelection?> {
         Binding(
             get: {
+                if pane == .agents, let selectedAgent { return .agent(selectedAgent) }
                 if let pane { return .pane(pane) }
                 return store.selectedFileURL.map { .node($0) }
             },
             set: { newValue in
                 switch newValue {
-                case .pane(let p): pane = p
+                case .pane(let p): pane = p; selectedAgent = nil
+                case .agent(let url): pane = .agents; selectedAgent = url
                 case .node(let url): pane = nil; store.selectedFileURL = url
                 case nil: break
                 }
             })
+    }
+
+    /// Off the main thread: the library can sit in iCloud Drive, where a read can stall.
+    private func reloadTeam() {
+        guard let root = store.rootURL else { team = []; return }
+        Task {
+            let loaded = await Task.detached { AgentDefinition.load(from: root) }.value
+            if loaded != team, store.rootURL == root { team = loaded }
+        }
     }
 
     var body: some View {
@@ -102,15 +121,26 @@ struct TopicsRootView: View {
             store.restoreVaultIfNeeded()
             agents.openLocal = { url in store.select(url); pane = nil }
             if let root = store.rootURL { agents.setWorkspace(root.path) }
+            reloadTeam()
             #if DEBUG
             // `-debugSelect <path relative to the library>` opens a topic/page (screenshots, UI checks).
             if let rel = UserDefaults.standard.string(forKey: "debugSelect"), let root = store.rootURL {
                 store.select(root.appendingPathComponent(rel))
             }
+            // `-debugPane agents` opens a pane outside the topics tree.
+            if let name = UserDefaults.standard.string(forKey: "debugPane") {
+                pane = SupportPane(rawValue: name)
+            }
+            // `-debugAgent wiki-critic` opens one agent.
+            if let name = UserDefaults.standard.string(forKey: "debugAgent"), let root = store.rootURL {
+                pane = .agents
+                selectedAgent = root.appendingPathComponent("\(AgentDefinition.folder)/\(name).md")
+            }
             #endif
         }
         .onChange(of: store.rootURL) { _, url in
             if let url { agents.setWorkspace(url.path) }
+            reloadTeam()
         }
         .onChange(of: store.selectedFileURL) { _, url in revealInTree(url) }
         .onChange(of: store.openVaultRequested) { _, requested in
@@ -120,6 +150,7 @@ struct TopicsRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             store.refresh()
+            reloadTeam()
         }
         .onReceive(NotificationCenter.default.publisher(for: .newTopic)) { _ in ask(.topic) }
         .onReceive(NotificationCenter.default.publisher(for: .newPage)) { _ in
@@ -156,8 +187,24 @@ struct TopicsRootView: View {
         List(selection: selection) {
             topicsSection
 
+            if store.rootURL != nil {
+                Section("Agents") {
+                    Label("All Agents", systemImage: SupportPane.agents.symbol)
+                        .tag(SidebarSelection.pane(.agents))
+                        .help("The whole team: names, models, tools, skills and instructions")
+                    ForEach(team) { agent in
+                        AgentSidebarRow(agent: agent)
+                            .tag(SidebarSelection.agent(agent.url))
+                            .help(agent.description)
+                    }
+                }
+            }
+
             if let root = store.rootURL {
                 Section("Library") {
+                    Label("Graph", systemImage: SupportPane.graph.symbol)
+                        .tag(SidebarSelection.pane(.graph))
+                        .help("A 3D map of how every page links to every other, like Obsidian's graph view")
                     Label("Agent Schema", systemImage: "doc.text")
                         .tag(SidebarSelection.node(root.appendingPathComponent(TopicLibrary.schemaFile)))
                         .help("CLAUDE.md — how the agent maintains this library")
@@ -168,7 +215,7 @@ struct TopicsRootView: View {
             }
 
             Section("Support") {
-                ForEach(SupportPane.allCases) { p in
+                ForEach(SupportPane.allCases.filter { $0 != .agents && $0 != .graph }) { p in
                     Label(p.title, systemImage: p.symbol).tag(SidebarSelection.pane(p))
                 }
             }
@@ -197,7 +244,29 @@ struct TopicsRootView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            ForEach(store.topics) { topic in
+            ForEach(TopicSection.allCases.filter { $0 != .other }) { section in
+                let items = store.topics(in: section)
+                DisclosureGroup(isExpanded: sectionBinding(section)) {
+                    if items.isEmpty {
+                        Text("No topics yet.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(items) { topic in
+                        TopicTreeRow(node: topic, depth: 0, expanded: $expanded, actions: rowActions)
+                    }
+                } label: {
+                    Label(section.rawValue, systemImage: section.symbol)
+                        .fontWeight(.semibold)
+                        .badge(items.count)
+                        .contentShape(Rectangle())
+                        .onTapGesture { toggleSection(section) }
+                        .help("Topics tagged “\(section.rawValue.lowercased())” — click to show or hide")
+                }
+            }
+            // Topics without a section tag (often ones still being written) sit below the
+            // sections as plain rows — no "Other" heading.
+            ForEach(store.topics(in: .other)) { topic in
                 TopicTreeRow(node: topic, depth: 0, expanded: $expanded, actions: rowActions)
             }
             Button { ask(.topic) } label: {
@@ -221,6 +290,27 @@ struct TopicsRootView: View {
                 }
             }
         }
+    }
+
+    private var collapsedSections: Set<String> {
+        Set(collapsedSectionsRaw.split(separator: ",").map(String.init))
+    }
+
+    private func setSection(_ section: TopicSection, open: Bool) {
+        var closed = collapsedSections
+        if open { closed.remove(section.rawValue) } else { closed.insert(section.rawValue) }
+        collapsedSectionsRaw = closed.sorted().joined(separator: ",")
+    }
+
+    private func toggleSection(_ section: TopicSection) {
+        withAnimation(.easeInOut(duration: 0.15)) {
+            setSection(section, open: collapsedSections.contains(section.rawValue))
+        }
+    }
+
+    private func sectionBinding(_ section: TopicSection) -> Binding<Bool> {
+        Binding(get: { !collapsedSections.contains(section.rawValue) },
+                set: { setSection(section, open: $0) })
     }
 
     /// Library location, pinned under the sidebar like Planner's sync row.
@@ -269,6 +359,11 @@ struct TopicsRootView: View {
         var chain = TopicLibrary.folderChain(root: root, to: dir)
         if store.isDirectory(url) { chain.removeLast() }
         expanded.formUnion(chain)
+        // Open the section holding the topic, so the revealed row is visible.
+        let topicURL = TopicLibrary.folderChain(root: root, to: dir).first?.standardizedFileURL
+        if let topic = store.topics.first(where: { $0.url.standardizedFileURL == topicURL }) {
+            setSection(store.section(of: topic), open: true)
+        }
     }
 
     // MARK: - Detail + agent panel
@@ -277,6 +372,8 @@ struct TopicsRootView: View {
     private var detail: some View {
         if let pane {
             switch pane {
+            case .agents:   AgentsView(agents: team, selected: selectedAgent)
+            case .graph:    LibraryGraphView { url in store.select(url); self.pane = nil }
             case .settings: SettingsView()
             case .feedback: FeedbackView()
             case .about:    AboutView()
@@ -436,13 +533,13 @@ private struct TagResultsPane: View {
         let results = store.tagResults
         ScrollView {
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(results.count) tagged")
+                Text(results.count == 1 ? "1 result" : "\(results.count) results")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 8)
                     .padding(.bottom, 4)
                 if results.isEmpty {
-                    Text("Nothing has these tags.")
+                    Text("No pages match.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 8)

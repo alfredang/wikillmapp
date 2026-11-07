@@ -14,6 +14,9 @@ struct LinkIndex: Sendable {
         let title: String
         let summary: String
         var tags: [String] = []
+        /// `<meta name="keywords">`: the page's concepts, synonyms, symbols and other names,
+        /// lowercased. The sidebar search matches them, so a page is found by any of its names.
+        var keywords: [String] = []
     }
 
     struct TagCount: Sendable, Hashable, Identifiable {
@@ -67,27 +70,64 @@ struct LinkIndex: Sendable {
 
     // MARK: Building
 
+    /// A page's text as last read, with what identifies that version of the file.
+    private struct CachedText {
+        let modified: Date?
+        let size: Int?
+        let text: String
+    }
+
+    private final class TextCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: [URL: CachedText] = [:]
+        var contents: [URL: CachedText] {
+            get { lock.withLock { stored } }
+            set { lock.withLock { stored = newValue } }
+        }
+    }
+
+    /// Lets a rebuild read only the pages that changed. In iCloud Drive macOS can remove a page's
+    /// local copy at any time, and reading it again would wait for a download, so an unchanged
+    /// page must not be touched just because some other file changed.
+    private static let textCache = TextCache()
+
     /// Scans every HTML page under `root` (skipping hidden and `_`-prefixed files). Cheap
     /// enough to run on each refresh for libraries of a few thousand pages; call it off the
     /// main thread.
     static func build(root: URL) -> LinkIndex {
         var index = LinkIndex()
         let fm = FileManager.default
-        guard let walker = fm.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey],
+        guard let walker = fm.enumerator(at: root,
+                                         includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey, .fileSizeKey],
                                          options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { return index }
         var files: [(URL, String)] = []
+        let known = textCache.contents
+        var seen: [URL: CachedText] = [:]
+        defer { textCache.contents = seen }
         for case let url as URL in walker {
             let name = url.lastPathComponent
             if name.hasPrefix("_") { if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { walker.skipDescendants() }; continue }
-            guard ["html", "htm"].contains(url.pathExtension.lowercased()),
-                  let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            guard ["html", "htm"].contains(url.pathExtension.lowercased()) else { continue }
             let page = url.standardizedFileURL
+            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+            let text: String
+            if let cached = known[page], let values, cached.modified == values.contentModificationDate, cached.size == values.fileSize {
+                text = cached.text
+            } else if let read = try? String(contentsOf: url, encoding: .utf8) {
+                text = read
+            } else {
+                continue
+            }
+            seen[page] = CachedText(modified: values?.contentModificationDate, size: values?.fileSize, text: text)
             files.append((page, text))
             let title = firstMatch(#"(?is)<title[^>]*>(.*?)</title>"#, in: text).map(decode) ?? name
             let summary = firstMatch(#"(?is)<meta\s+name="description"\s+content="([^"]*)""#, in: text).map(decode) ?? ""
             // raw/ holds immutable sources: a saved web page's own tags aren't library tags.
             let tags = TopicLibrary.isSource(page, root: root) ? [] : PageTags.read(from: text)
-            index.pages[page] = Page(url: page, title: title, summary: summary, tags: tags)
+            let keywords = firstMatch(#"(?is)<meta\s+name="keywords"\s+content="([^"]*)""#, in: text)
+                .map { decode($0).lowercased().split(separator: ",")
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty } } ?? []
+            index.pages[page] = Page(url: page, title: title, summary: summary, tags: tags, keywords: keywords)
         }
         index.rebuildTagList()
 

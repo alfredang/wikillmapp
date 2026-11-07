@@ -77,6 +77,7 @@ struct HTMLPageView {
             finished = true
             retries = 0
             applyScript(webView)
+            renderMath(webView)
             if let y = restoreScrollY {
                 restoreScrollY = nil
                 webView.evaluateJavaScript("window.scrollTo(0, \(y))")
@@ -118,6 +119,51 @@ struct HTMLPageView {
                 self.reload(webView)
             }
         }
+
+        /// Typesets LaTeX (`\( … \)`, `\[ … \]`, `$$ … $$`) with the library's offline KaTeX
+        /// on pages that contain it but don't load KaTeX themselves, so every formula renders.
+        /// Pages that include KaTeX (the `latex-math` skill) are left alone.
+        func renderMath(_ webView: WKWebView) {
+            let base = parent.readAccessURL.appendingPathComponent("_assets/katex", isDirectory: true)
+            // The library may sit in iCloud Drive: check for KaTeX off the main thread.
+            DispatchQueue.global(qos: .userInitiated).async { [weak webView] in
+                guard FileManager.default.fileExists(atPath: base.appendingPathComponent("katex.min.js").path)
+                else { return }
+                let js = Self.mathScript.replacingOccurrences(of: "__BASE__", with: base.absoluteString)
+                DispatchQueue.main.async { webView?.evaluateJavaScript(js) }
+            }
+        }
+
+        private static let mathScript = #"""
+        (function (base) {
+          if (window.katex || window.__wikiMath) return;
+          var text = document.body ? document.body.innerText : "";
+          if (!/\\\(|\\\[|\$\$/.test(text)) return;
+          window.__wikiMath = true;
+          function add(tag, attrs, done) {
+            var el = document.createElement(tag);
+            for (var k in attrs) el[k] = attrs[k];
+            if (done) el.onload = done;
+            document.head.appendChild(el);
+          }
+          add("link", { rel: "stylesheet", href: base + "katex.min.css" });
+          add("script", { src: base + "katex.min.js" }, function () {
+            add("script", { src: base + "auto-render.min.js" }, function () {
+              renderMathInElement(document.body, {
+                delimiters: [{ left: "\\[", right: "\\]", display: true },
+                             { left: "$$", right: "$$", display: true },
+                             { left: "\\(", right: "\\)", display: false }],
+                macros: { "\\Q": "\\mathbb{Q}", "\\R": "\\mathbb{R}", "\\C": "\\mathbb{C}",
+                          "\\Z": "\\mathbb{Z}", "\\N": "\\mathbb{N}", "\\F": "\\mathbb{F}",
+                          "\\Gal": "\\operatorname{Gal}", "\\Aut": "\\operatorname{Aut}",
+                          "\\tr": "\\operatorname{tr}" },
+                ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"],
+                throwOnError: false
+              });
+            });
+          });
+        })("__BASE__");
+        """#
 
         func applyScript(_ webView: WKWebView) {
             appliedScript = parent.linkScript

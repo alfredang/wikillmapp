@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Library Graph</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f6f9; --ink: #1d1d24; --muted: #6b6b78; --panel: rgba(255,255,255,.86);
+    --line: rgba(0,0,0,.10); --accent: #7C5CFF; --link: 0x5a5a70;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #101116; --ink: #e9e9ef; --muted: #9a9aa8; --panel: rgba(24,25,32,.86);
+            --line: rgba(255,255,255,.10); }
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink);
+               font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+  #graph { position: absolute; inset: 0; }
+  .panel { position: absolute; background: var(--panel); border: 1px solid var(--line);
+           border-radius: 12px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+           box-shadow: 0 6px 24px rgba(0,0,0,.12); }
+  #controls { top: 14px; left: 14px; width: 250px; padding: 12px; }
+  #controls h1 { font-size: 13px; margin: 0 0 2px; }
+  #stats { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  #search { width: 100%; box-sizing: border-box; padding: 6px 9px; border-radius: 8px;
+            border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; }
+  #search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  #legend { margin-top: 10px; display: grid; gap: 3px; max-height: 40vh; overflow: auto; }
+  #legend label { display: flex; align-items: center; gap: 7px; cursor: pointer; padding: 2px 0; }
+  #legend input { accent-color: var(--accent); margin: 0; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .row { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  button { font: inherit; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
+           background: transparent; color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #card { right: 14px; top: 14px; width: 280px; padding: 12px 14px; display: none; }
+  #card h2 { font-size: 14px; margin: 0 0 2px; }
+  #card .topic { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  #card p { margin: 0 0 8px; color: var(--muted); }
+  #card ul { margin: 0 0 10px; padding-left: 16px; max-height: 30vh; overflow: auto; }
+  #card li { cursor: pointer; } #card li:hover { color: var(--accent); }
+  #card .open { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #hint { left: 50%; bottom: 14px; transform: translateX(-50%); padding: 6px 12px; color: var(--muted);
+          font-size: 12px; white-space: nowrap; }
+  .scene-tooltip { font: 12px -apple-system, sans-serif !important; padding: 4px 8px !important;
+                   border-radius: 6px !important; background: rgba(20,20,28,.88) !important; }
+</style>
+</head>
+<body>
+<div id="graph" role="img" aria-label="3D graph of the library: each page is a node, each link between pages is an edge"></div>
+
+<div id="controls" class="panel">
+  <h1>Library graph</h1>
+  <div id="stats" aria-live="polite">Loading…</div>
+  <input id="search" type="search" placeholder="Find a page…" list="titles" autocomplete="off">
+  <datalist id="titles"></datalist>
+  <div id="legend"></div>
+  <div class="row">
+    <button id="orphans" title="Highlight pages no other page links to">Orphans</button>
+    <button id="spin" title="Rotate the graph slowly">Rotate</button>
+    <button id="fit" title="Fit the whole graph in view">Fit</button>
+  </div>
+</div>
+
+<div id="card" class="panel" aria-live="polite">
+  <h2 id="cardTitle"></h2>
+  <div class="topic" id="cardTopic"></div>
+  <p id="cardSummary"></p>
+  <div id="cardLinksLabel" class="topic"></div>
+  <ul id="cardLinks"></ul>
+  <div class="row" style="margin-top:0">
+    <button class="open" id="cardOpen">Open page</button>
+    <button id="cardClose">Close</button>
+  </div>
+</div>
+
+<div id="hint" class="panel">Drag to rotate · scroll to zoom · right-drag to pan · click a page to focus</div>
+
+<script src="3d-force-graph.min.js"></script>
+<script>
+(function () {
+  // Distinct hues in order, so neighbouring topics (sorted A to Z) never look alike.
+  var PALETTE = ["#7C5CFF", "#4C8DFF", "#30a46c", "#f5a524", "#e5484d", "#d6409f",
+                 "#00a3c4", "#a0611c", "#7d8b00", "#ff7a45", "#5b6b8c", "#c2298a"];
+  var all = { nodes: [], links: [] };
+  var byId = new Map(), neighbours = new Map(), topics = [], colour = {}, hidden = new Set();
+  var hoverNode = null, focusNode = null, showOrphans = false, spinning = false, spinTimer = null;
+  var dark = matchMedia("(prefers-color-scheme: dark)");
+  var stillMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function post(msg) {
+    if (window.webkit && webkit.messageHandlers && webkit.messageHandlers.graph)
+      webkit.messageHandlers.graph.postMessage(msg);
+  }
+
+  var Graph = ForceGraph3D({ controlType: "orbit" })(document.getElementById("graph"))
+    .backgroundColor("rgba(0,0,0,0)")
+    .showNavInfo(false)
+    .nodeId("id")
+    .nodeVal(function (n) { return 1.5 + n.degree * 0.9; })
+    .nodeRelSize(3.2)
+    .nodeOpacity(0.95)
+    .nodeResolution(16)
+    .nodeLabel(function (n) { return "<b>" + esc(n.title) + "</b><br><span style='opacity:.7'>" + esc(n.topic) +
+                                     " · " + n.degree + " link" + (n.degree === 1 ? "" : "s") + "</span>"; })
+    .nodeColor(nodeColour)
+    .linkColor(linkColour)
+    .linkOpacity(0.7)
+    .linkWidth(function (l) { return isLit(l) ? 2.2 : (l.cross ? 1.1 : 0); })
+    .linkDirectionalParticles(function (l) { return isLit(l) ? 3 : 0; })
+    .linkDirectionalParticleWidth(1.8)
+    .linkDirectionalParticleSpeed(0.006)
+    .linkCurvature(function (l) { return l.cross ? 0.18 : 0; })
+    .onNodeHover(function (n) {
+      hoverNode = n || null;
+      document.getElementById("graph").style.cursor = n ? "pointer" : "";
+      refresh();
+    })
+    .onNodeClick(function (n) { focus(n); })
+    .onBackgroundClick(function () { focusNode = null; hideCard(); refresh(); });
+
+  Graph.d3Force("charge").strength(-45);
+  Graph.d3Force("link").distance(function (l) { return l.cross ? 60 : 30; });
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  function active() { return focusNode || hoverNode; }
+  function isLit(l) {
+    var a = active(); if (!a) return false;
+    var s = typeof l.source === "object" ? l.source.id : l.source;
+    var t = typeof l.target === "object" ? l.target.id : l.target;
+    return s === a.id || t === a.id;
+  }
+  function nodeColour(n) {
+    var a = active();
+    if (showOrphans) return n.inDegree === 0 ? "#e5484d" : (dark.matches ? "#3a3a46" : "#cfcfd8");
+    if (!a || n === a || (neighbours.get(a.id) || new Set()).has(n.id)) return colour[n.topic];
+    return dark.matches ? "#2e2e38" : "#d9d9e1";
+  }
+  // Links inside a topic take the topic's colour; links across topics are drawn darker and
+  // thicker, because those bridges are where ideas connect.
+  function linkColour(l) {
+    if (isLit(l)) return "#7C5CFF";
+    var a = active();
+    if (a || showOrphans) return dark.matches ? "rgba(90,90,110,0.35)" : "rgba(170,170,185,0.35)";
+    if (l.cross) return dark.matches ? "#e9e9ef" : "#2b2b38";
+    var s = typeof l.source === "object" ? l.source : byId.get(l.source);
+    return s ? colour[s.topic] : "#888";
+  }
+  function refresh() {
+    Graph.nodeColor(Graph.nodeColor()).linkColor(Graph.linkColor())
+         .linkWidth(Graph.linkWidth()).linkDirectionalParticles(Graph.linkDirectionalParticles());
+  }
+
+  function focus(n) {
+    if (!n) return;
+    focusNode = n; refresh(); showCard(n);
+    var d = 90, r = 1 + d / Math.hypot(n.x || 1, n.y || 1, n.z || 1);
+    Graph.cameraPosition({ x: (n.x || 1) * r, y: (n.y || 1) * r, z: (n.z || 1) * r }, n, stillMotion ? 0 : 1200);
+  }
+
+  function showCard(n) {
+    document.getElementById("cardTitle").textContent = n.title;
+    document.getElementById("cardTopic").textContent = n.topic;
+    document.getElementById("cardSummary").textContent = n.summary || "";
+    var ids = Array.from(neighbours.get(n.id) || []);
+    document.getElementById("cardLinksLabel").textContent =
+      ids.length ? ids.length + " connected page" + (ids.length === 1 ? "" : "s") : "No connections yet";
+    var ul = document.getElementById("cardLinks"); ul.innerHTML = "";
+    ids.map(function (id) { return byId.get(id); }).filter(Boolean)
+       .sort(function (a, b) { return a.title.localeCompare(b.title); })
+       .forEach(function (m) {
+         var li = document.createElement("li"); li.textContent = m.title;
+         li.style.color = colour[m.topic]; li.onclick = function () { focus(m); };
+         ul.appendChild(li);
+       });
+    document.getElementById("cardOpen").onclick = function () { post({ open: n.id }); };
+    document.getElementById("card").style.display = "block";
+  }
+  function hideCard() { document.getElementById("card").style.display = "none"; }
+  document.getElementById("cardClose").onclick = function () { focusNode = null; hideCard(); refresh(); };
+
+  function applyFilter() {
+    var nodes = all.nodes.filter(function (n) { return !hidden.has(n.topic); });
+    var keep = new Set(nodes.map(function (n) { return n.id; }));
+    var links = all.links.filter(function (l) {
+      var s = typeof l.source === "object" ? l.source.id : l.source;
+      var t = typeof l.target === "object" ? l.target.id : l.target;
+      return keep.has(s) && keep.has(t);
+    });
+    Graph.graphData({ nodes: nodes, links: links });
+  }
+
+  function buildLegend() {
+    var box = document.getElementById("legend"); box.innerHTML = "";
+    topics.forEach(function (t) {
+      var count = all.nodes.filter(function (n) { return n.topic === t; }).length;
+      var lab = document.createElement("label");
+      lab.innerHTML = "<input type='checkbox'" + (hidden.has(t) ? "" : " checked") + ">" +
+        "<span class='dot' style='background:" + colour[t] + "'></span><span>" + esc(t) + "</span>" +
+        "<span class='count'>" + count + "</span>";
+      lab.querySelector("input").onchange = function (e) {
+        if (e.target.checked) hidden.delete(t); else hidden.add(t);
+        applyFilter();
+      };
+      box.appendChild(lab);
+    });
+  }
+
+  // Called by the app with { nodes: [{id,title,topic,summary}], links: [{source,target}] }.
+  // Keeps the positions of pages already on screen, so an update doesn't scatter the layout.
+  window.setGraph = function (data) {
+    var old = new Map(all.nodes.map(function (n) { return [n.id, n]; }));
+    var nodes = data.nodes.map(function (n) {
+      var o = old.get(n.id);
+      if (o) { o.title = n.title; o.topic = n.topic; o.summary = n.summary; return o; }
+      return Object.assign({}, n);
+    });
+    byId = new Map(nodes.map(function (n) { return [n.id, n]; }));
+    neighbours = new Map(nodes.map(function (n) { return [n.id, new Set()]; }));
+    nodes.forEach(function (n) { n.degree = 0; n.inDegree = 0; });
+    var seen = new Set(), links = [];
+    data.links.forEach(function (l) {
+      var s = byId.get(l.source), t = byId.get(l.target);
+      if (!s || !t || s === t) return;
+      neighbours.get(s.id).add(t.id); neighbours.get(t.id).add(s.id);
+      t.inDegree++;
+      var key = s.id < t.id ? s.id + "\n" + t.id : t.id + "\n" + s.id;
+      if (seen.has(key)) return; seen.add(key);
+      links.push({ source: s.id, target: t.id, cross: s.topic !== t.topic });
+    });
+    nodes.forEach(function (n) { n.degree = neighbours.get(n.id).size; });
+    topics = Array.from(new Set(nodes.map(function (n) { return n.topic; }))).sort();
+    topics.forEach(function (t, i) { colour[t] = PALETTE[i % PALETTE.length]; });
+    all = { nodes: nodes, links: links };
+    if (focusNode && !byId.has(focusNode.id)) { focusNode = null; hideCard(); }
+
+    var orphans = nodes.filter(function (n) { return n.inDegree === 0; }).length;
+    var cross = links.filter(function (l) { return l.cross; }).length;
+    document.getElementById("stats").textContent = nodes.length + " pages · " + links.length +
+      " connections (" + cross + " across topics) · " + orphans + " orphan" + (orphans === 1 ? "" : "s");
+    var dl = document.getElementById("titles"); dl.innerHTML = "";
+    nodes.forEach(function (n) { var o = document.createElement("option"); o.value = n.title; dl.appendChild(o); });
+    buildLegend();
+    applyFilter();
+  };
+
+  window.focusPage = function (id) { var n = byId.get(id); if (n) setTimeout(function () { focus(n); }, 600); };
+
+  document.getElementById("search").addEventListener("change", function (e) {
+    var q = e.target.value.trim().toLowerCase(); if (!q) return;
+    var hit = all.nodes.find(function (n) { return n.title.toLowerCase() === q; }) ||
+              all.nodes.find(function (n) { return n.title.toLowerCase().indexOf(q) >= 0; });
+    if (hit) { hidden.delete(hit.topic); buildLegend(); applyFilter(); setTimeout(function () { focus(hit); }, 50); }
+  });
+  document.getElementById("orphans").onclick = function (e) {
+    showOrphans = !showOrphans; e.target.classList.toggle("on", showOrphans); refresh();
+  };
+  document.getElementById("fit").onclick = function () { Graph.zoomToFit(stillMotion ? 0 : 800, 40); };
+  document.getElementById("spin").onclick = function (e) {
+    spinning = !spinning; e.target.classList.toggle("on", spinning);
+    if (spinTimer) { clearInterval(spinTimer); spinTimer = null; }
+    if (spinning) {
+      var angle = Math.atan2(Graph.cameraPosition().x, Graph.cameraPosition().z);
+      spinTimer = setInterval(function () {
+        var p = Graph.cameraPosition(), r = Math.hypot(p.x, p.z); angle += 0.003;
+        Graph.cameraPosition({ x: r * Math.sin(angle), y: p.y, z: r * Math.cos(angle) });
+      }, 16);
+    }
+  };
+  dark.addEventListener("change", refresh);
+  addEventListener("resize", function () { Graph.width(innerWidth).height(innerHeight); });
+  var fitted = false;
+  Graph.onEngineStop(function () { if (!fitted) { fitted = true; Graph.zoomToFit(stillMotion ? 0 : 800, 40); } });
+  post({ ready: true });
+})();
+</script>
+</body>
+</html>

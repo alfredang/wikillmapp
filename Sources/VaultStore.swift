@@ -19,6 +19,7 @@ final class VaultStore: ObservableObject {
     /// Rebuilt in the background after each refresh.
     @Published private(set) var links = LinkIndex()
     private var linkTask: Task<Void, Never>?
+    private var linkRebuildPending = false
 
     /// Sidebar tag search: results carry every selected tag and, when text is typed, a tag
     /// containing that text.
@@ -217,17 +218,40 @@ final class VaultStore: ObservableObject {
         rebuildLinks(root: rootURL)
     }
 
+    /// One build at a time, with at most one more queued. A read can't be cancelled, so in iCloud
+    /// Drive, where a read waits on a download, starting a build per change piles them up, and
+    /// their downloads raise more file events that start more builds.
     private func rebuildLinks(root: URL) {
-        linkTask?.cancel()
+        guard linkTask == nil else {
+            linkRebuildPending = true
+            return
+        }
         linkTask = Task { [weak self] in
             let index = await Task.detached(priority: .utility) { LinkIndex.build(root: root) }.value
-            guard !Task.isCancelled, let self, self.rootURL == root else { return }
-            self.links = index
+            guard let self else { return }
+            self.linkTask = nil
+            if self.rootURL == root { self.links = index }
+            if self.linkRebuildPending, let current = self.rootURL {
+                self.linkRebuildPending = false
+                self.rebuildLinks(root: current)
+            }
         }
     }
 
     /// The topic folders (top-level directories of the library).
     var topics: [FileNode] { rootNode?.children ?? [] }
+
+    /// The sidebar section a topic belongs to, from the tags on its `index.html`.
+    func section(of topic: FileNode) -> TopicSection {
+        let index = topic.url.appendingPathComponent(TopicLibrary.indexFile).standardizedFileURL
+        return TopicSection.of(tags: links.pages[index]?.tags ?? [])
+    }
+
+    /// The topics in one sidebar section, A to Z by name.
+    func topics(in section: TopicSection) -> [FileNode] {
+        topics.filter { self.section(of: $0) == section }
+            .sorted { sidebarLabel(for: $0).localizedStandardCompare(sidebarLabel(for: $1)) == .orderedAscending }
+    }
 
     // MARK: - Sidebar labels and order
 
@@ -284,34 +308,67 @@ final class VaultStore: ObservableObject {
 
     // MARK: - Tags
 
-    private var normalizedTagQuery: String { PageTags.normalize(tagQuery) }
+    // The sidebar search (`tagQuery`) is generic: plain words match a page's title, summary,
+    // folders and tags; a word starting with `@` searches tags only and offers tag chips
+    // (`@` alone lists them all). Selected chips narrow the results further.
 
-    var isFilteringByTag: Bool { !selectedTags.isEmpty || !normalizedTagQuery.isEmpty }
+    /// The `@tag` words of the search, without the `@`; `[""]` while only `@` is typed.
+    private var tagTerms: [String] {
+        searchWords.filter { $0.hasPrefix("@") }.map { PageTags.normalize(String($0.dropFirst())) }
+    }
+    /// The plain words of the search, lowercased.
+    private var textTerms: [String] {
+        searchWords.filter { !$0.hasPrefix("@") }.map { $0.lowercased() }
+    }
+    private var searchWords: [String] {
+        tagQuery.split(whereSeparator: \.isWhitespace).map(String.init)
+    }
+    /// True once a tag is being searched for (an `@` word or a selected chip).
+    var isSearchingTags: Bool { !selectedTags.isEmpty || !tagTerms.isEmpty }
+
+    /// True while the sidebar search shows results instead of the topics tree.
+    var isFilteringByTag: Bool { isSearchingTags || !textTerms.isEmpty }
 
     /// Chips to offer: tags matching the typed text, plus selected ones so they can always be
     /// turned off, even after their last page loses the tag.
     var visibleTags: [LinkIndex.TagCount] {
-        let query = normalizedTagQuery
-        var tags = links.tagList.filter {
-            query.isEmpty || $0.tag.contains(query) || selectedTags.contains($0.tag)
+        let terms = tagTerms
+        var tags = links.tagList.filter { item in
+            selectedTags.contains(item.tag)
+                || (!terms.isEmpty && terms.contains { $0.isEmpty || item.tag.contains($0) })
         }
         let listed = Set(tags.map(\.tag))
         tags += selectedTags.subtracting(listed).map { LinkIndex.TagCount(tag: $0, count: 0) }
         return tags.sorted { $0.tag.localizedStandardCompare($1.tag) == .orderedAscending }
     }
 
-    /// Pages matching the tag search, with each topic ahead of the pages inside it.
+    /// Pages matching the search: pages whose title matches come first, then the rest, each
+    /// group with every topic ahead of the pages inside it.
     var tagResults: [LinkIndex.Page] {
-        let query = normalizedTagQuery
+        let tags = tagTerms.filter { !$0.isEmpty }, words = textTerms
         return links.pages.values
             .filter { page in
                 selectedTags.allSatisfy(page.tags.contains)
-                    && !page.tags.isEmpty
-                    && (query.isEmpty || page.tags.contains { $0.contains(query) })
+                    && tags.allSatisfy { term in page.tags.contains { $0.contains(term) } }
+                    && (words.isEmpty || words.allSatisfy { searchText(of: page).contains($0) })
+                    && !(isSearchingTags && page.tags.isEmpty)
             }
-            .map { (page: $0, path: relativePath(nodeURL(forPage: $0.url))) }
-            .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+            .map { page in
+                (page: page, path: relativePath(nodeURL(forPage: page.url)),
+                 inTitle: !words.isEmpty && words.allSatisfy { page.title.lowercased().contains($0) })
+            }
+            .sorted {
+                $0.inTitle != $1.inTitle ? $0.inTitle
+                    : $0.path.localizedStandardCompare($1.path) == .orderedAscending
+            }
             .map(\.page)
+    }
+
+    /// What plain search words are matched against: title, summary, keywords, folders and tags.
+    private func searchText(of page: LinkIndex.Page) -> String {
+        [page.title, page.summary, page.keywords.joined(separator: " "), relativePath(page.url),
+         page.tags.joined(separator: " ")]
+            .joined(separator: " ").lowercased()
     }
 
     /// What a page's row selects: a folder stands for its `index.html`.
@@ -319,8 +376,12 @@ final class VaultStore: ObservableObject {
         url.lastPathComponent.lowercased() == TopicLibrary.indexFile ? url.deletingLastPathComponent() : url
     }
 
+    /// Selecting a chip replaces the `@` words that offered it; plain words stay.
     func toggleTag(_ tag: String) {
-        if selectedTags.remove(tag) == nil { selectedTags.insert(tag) }
+        if selectedTags.remove(tag) == nil {
+            selectedTags.insert(tag)
+            tagQuery = searchWords.filter { !$0.hasPrefix("@") }.joined(separator: " ")
+        }
     }
 
     /// Replaces the search with one tag.

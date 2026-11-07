@@ -88,17 +88,18 @@ struct TagChip: View {
     }
 }
 
-/// Search field and tag chips pinned above the sidebar. Stays out of the way until the
-/// library has a tag.
+/// Search pinned above the sidebar. Plain words search page titles, summaries, folders and
+/// tags; `@word` searches tags and shows the matching tag chips (`@` alone lists them all), so
+/// the library's full tag list never crowds the top of the sidebar.
 struct TagFilterBar: View {
     @EnvironmentObject var store: VaultStore
     @State private var chipsHeight: CGFloat = 24
 
     var body: some View {
-        if !store.links.tagList.isEmpty || store.isFilteringByTag {
+        if !store.links.pages.isEmpty || store.isFilteringByTag {
             VStack(alignment: .leading, spacing: 8) {
                 searchField
-                let tags = store.visibleTags
+                let tags = store.isFilteringByTag ? store.visibleTags : []
                 if !tags.isEmpty {
                     // As tall as the chips, scrolling once there are too many.
                     ScrollView {
@@ -116,10 +117,11 @@ struct TagFilterBar: View {
 
     private var searchField: some View {
         HStack(spacing: 6) {
-            Image(systemName: "tag").font(.caption).foregroundStyle(.secondary)
-            TextField("Search tags", text: $store.tagQuery)
+            Image(systemName: "magnifyingglass").font(.caption).foregroundStyle(.secondary)
+            TextField("Search, or @tag", text: $store.tagQuery)
                 .textFieldStyle(.plain)
-                .accessibilityLabel("Search tags")
+                .accessibilityLabel("Search pages; start a word with @ to search tags")
+                .help("Search page titles, summaries, keywords and folders. Start a word with @ to search tags; @ alone lists them all.")
                 .autocorrectionDisabled()
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
@@ -129,8 +131,8 @@ struct TagFilterBar: View {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .help("Clear the tag search")
-                .accessibilityLabel("Clear the tag search")
+                .help("Clear the search")
+                .accessibilityLabel("Clear the search")
             }
         }
         .padding(.horizontal, 8)

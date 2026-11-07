@@ -97,7 +97,9 @@ struct TopicDetailView: View {
     }
 
     private func title(isDir: Bool, page: URL?) -> String {
-        if let page, isHTML(page), let t = Self.htmlTitle(page), !t.isEmpty { return t }
+        // From the link index, never the file: this runs on every redraw, and in iCloud Drive a
+        // read can stall and freeze the app.
+        if let page, isHTML(page), let t = store.links.pages[page.standardizedFileURL]?.title, !t.isEmpty { return t }
         if isDir { return url.lastPathComponent == TopicLibrary.sourcesFolder ? "Sources" : url.lastPathComponent }
         return url.lastPathComponent
     }
@@ -121,11 +123,11 @@ struct TopicDetailView: View {
         } else {
             let node = FileNode(url: url, name: url.lastPathComponent, isDirectory: false, children: nil)
             if node.isEditable {
-                MarkdownEditorView(url: url).id(url)
+                LocalFileGate(url: url) { MarkdownEditorView(url: url).id(url) }
             } else if node.isImage {
                 ImageFileView(url: url)
             } else if node.ext == "pdf" {
-                HTMLPageView(url: url, readAccessURL: url.deletingLastPathComponent())
+                LocalFileGate(url: url) { HTMLPageView(url: url, readAccessURL: url.deletingLastPathComponent()) }
             } else {
                 ContentUnavailableView {
                     Label(url.lastPathComponent, systemImage: node.systemImage)
@@ -146,15 +148,17 @@ struct TopicDetailView: View {
                                    linkScript: store.links.script(for: page),
                                    onOpenLocal: { store.select($0) })
         VStack(spacing: 0) {
-            switch mode {
-            case .preview:
-                preview
-            case .source:
-                HTMLSourceEditor(url: page)
-            case .split:
-                HSplitView {
-                    HTMLSourceEditor(url: page).frame(minWidth: 260)
-                    preview.frame(minWidth: 260)
+            LocalFileGate(url: page) {
+                switch mode {
+                case .preview:
+                    preview
+                case .source:
+                    HTMLSourceEditor(url: page)
+                case .split:
+                    HSplitView {
+                        HTMLSourceEditor(url: page).frame(minWidth: 260)
+                        preview.frame(minWidth: 260)
+                    }
                 }
             }
             LinksBar(page: page)
@@ -163,28 +167,79 @@ struct TopicDetailView: View {
 
     private func isHTML(_ url: URL) -> Bool { ["html", "htm"].contains(url.pathExtension.lowercased()) }
 
-    /// The page's `<title>`, read from the first few KB.
-    static func htmlTitle(_ url: URL) -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: 8192),
-              let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1),
-              let range = text.range(of: #"(?is)<title[^>]*>(.*?)</title>"#, options: .regularExpression)
-        else { return nil }
-        let raw = String(text[range])
-            .replacingOccurrences(of: #"(?is)</?title[^>]*>"#, with: "", options: .regularExpression)
-        return raw.replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     static func find(_ url: URL, in node: FileNode) -> FileNode? {
         if node.url.standardizedFileURL == url.standardizedFileURL { return node }
         for child in node.children ?? [] {
             if let hit = find(url, in: child) { return hit }
         }
         return nil
+    }
+}
+
+/// Shows `content` once `url` is on this Mac. When the disk runs low, macOS removes the local copy
+/// of files in iCloud Drive, and opening one waits for a download. WebKit shows a white page for
+/// that whole time and an editor would freeze the app, so this fetches the file off the main thread
+/// first and says what is happening. A page already showing stays up if macOS later evicts it.
+private struct LocalFileGate<Content: View>: View {
+    let url: URL
+    @ViewBuilder var content: () -> Content
+
+    @State private var shown: URL?
+    @State private var failed: URL?
+    @State private var attempt = 0
+
+    private struct Fetch: Hashable {
+        let url: URL
+        let attempt: Int
+    }
+
+    var body: some View {
+        if shown == url || !Self.isEvicted(url) {
+            content().task(id: url) { shown = url }
+        } else if failed == url {
+            ContentUnavailableView {
+                Label("Couldn't download this page", systemImage: "icloud.slash")
+            } description: {
+                Text("macOS removed its local copy to save disk space and couldn't get it back from iCloud. Check your internet connection and try again.")
+            } actions: {
+                Button("Try Again") {
+                    failed = nil
+                    attempt += 1
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ContentUnavailableView {
+                Label {
+                    Text("Downloading from iCloud…")
+                } icon: {
+                    ProgressView().controlSize(.large)
+                }
+            } description: {
+                Text("macOS removed its local copy of this page to save disk space. It opens as soon as the download finishes, which can take a minute or two.")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .task(id: Fetch(url: url, attempt: attempt)) {
+                let target = url
+                let fetched = await Task.detached(priority: .userInitiated) { Self.fetch(target) }.value
+                guard !Task.isCancelled else { return }
+                if fetched { shown = target } else { failed = target }
+            }
+        }
+    }
+
+    /// True when only iCloud holds the file's contents. Asking doesn't start a download.
+    private nonisolated static func isEvicted(_ url: URL) -> Bool {
+        let dataless: UInt32 = 0x4000_0000   // SF_DATALESS in <sys/stat.h>
+        var info = stat()
+        return stat(url.path, &info) == 0 && info.st_flags & dataless != 0
+    }
+
+    /// Reading the first byte makes macOS download the whole file.
+    private nonisolated static func fetch(_ url: URL) -> Bool {
+        guard let file = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? file.close() }
+        return (try? file.read(upToCount: 1)) != nil
     }
 }
 
@@ -210,7 +265,9 @@ struct LinksBar: View {
                     Label("\(back.count) backlink\(back.count == 1 ? "" : "s")", systemImage: "arrow.uturn.backward")
                     Label("\(out.count) outgoing", systemImage: "arrow.up.right")
                     Spacer()
-                    if back.isEmpty, !page.lastPathComponent.lowercased().hasPrefix("index") {
+                    // Only once the index has reached this page: until then "no backlinks" means nothing.
+                    if back.isEmpty, store.links.pages[page.standardizedFileURL] != nil,
+                       !page.lastPathComponent.lowercased().hasPrefix("index") {
                         Text("Orphan: nothing links here yet").foregroundStyle(Theme.highlight)
                     }
                 }
@@ -362,9 +419,16 @@ struct FolderOverview: View {
 
 /// Card for a page or folder in an overview grid.
 struct NodeCard: View {
+    @EnvironmentObject var store: VaultStore
     let node: FileNode
     var action: () -> Void
     @State private var hovering = false
+
+    private var cardTitle: String {
+        guard node.isHTML, let title = store.links.pages[node.url.standardizedFileURL]?.title, !title.isEmpty
+        else { return node.displayName }
+        return title
+    }
 
     var body: some View {
         Button(action: action) {
@@ -376,7 +440,7 @@ struct NodeCard: View {
                         Text("\(node.pageCount) pages").font(.caption2).foregroundStyle(.secondary)
                     }
                 }
-                Text(node.isHTML ? (TopicDetailView.htmlTitle(node.url) ?? node.displayName) : node.displayName)
+                Text(cardTitle)
                     .font(.headline)
                     .multilineTextAlignment(.leading)
                     .lineLimit(2)

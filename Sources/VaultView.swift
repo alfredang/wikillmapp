@@ -72,9 +72,9 @@ struct VaultView: View {
             List(selection: $store.selectedFileURL) {
                 if store.isFilteringByTag {
                     let results = store.tagResults
-                    Section("\(results.count) tagged") {
+                    Section(results.count == 1 ? "1 result" : "\(results.count) results") {
                         if results.isEmpty {
-                            Text("Nothing has these tags.")
+                            Text("No pages match.")
                                 .font(.callout).foregroundStyle(Theme.mutedInk)
                         }
                         ForEach(results, id: \.url) { page in

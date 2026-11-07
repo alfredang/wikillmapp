@@ -33,9 +33,10 @@ enum AgentKind: String, CaseIterable, Identifiable {
     }
 
     /// Arguments after the executable. Claude runs without per-command permission prompts,
-    /// matching the Planner app — the agent only works inside the library folder.
+    /// matching the Planner app — the agent only works inside the library folder. It defaults
+    /// to Opus 5.5 at high effort; the library's subagents set their own models.
     var arguments: String {
-        self == .claude ? " --dangerously-skip-permissions" : ""
+        self == .claude ? " --dangerously-skip-permissions --model claude-opus-5-5 --effort high" : ""
     }
 
     /// Shell test that's true when this folder has an earlier conversation, and the
@@ -308,33 +309,80 @@ private struct AgentTerminalHost: NSViewRepresentable {
     let kind: AgentKind
     var isActive: Bool
 
-    func makeNSView(context: Context) -> NSView {
-        let container = TerminalContainerView()
-        session.view.removeFromSuperview()
-        container.addSubview(session.view)
+    func makeNSView(context: Context) -> TerminalContainerView {
+        let session = session
+        let kind = kind
+        let container = TerminalContainerView(terminal: session.view) {
+            if AgentPanelModel.shared.takeHostFocus(kind) { session.focus() }
+        }
         session.setActive(isActive)
-        if AgentPanelModel.shared.takeHostFocus(kind) { session.focus() }
         return container
     }
 
-    func updateNSView(_ container: NSView, context: Context) { session.setActive(isActive) }
+    func updateNSView(_ container: TerminalContainerView, context: Context) { session.setActive(isActive) }
 
-    static func dismantleNSView(_ container: NSView, coordinator: ()) {
-        container.subviews.forEach { $0.removeFromSuperview() }
+    static func dismantleNSView(_ container: TerminalContainerView, coordinator: ()) {
+        container.release()
     }
 }
 
 /// Keeps the terminal the size of this view. Autoresizing can't do it: the host starts at zero
 /// size, and AppKit shares growth out in proportion to existing size, so a zero-size terminal
 /// would stay at its minimum (1 row by 2 columns) and show a black screen.
+///
+/// SwiftUI can create a second host for the same terminal during layout, and that host may never
+/// reach the screen. So a host takes the terminal only once it is on screen at a real size, and
+/// never from another host that is.
 private final class TerminalContainerView: NSView {
+    private static let hosts = NSHashTable<TerminalContainerView>.weakObjects()
+
+    private let terminal: NSView
+    private let onAttach: () -> Void
+
+    init(terminal: NSView, onAttach: @escaping () -> Void) {
+        self.terminal = terminal
+        self.onAttach = onAttach
+        super.init(frame: .zero)
+        Self.hosts.add(self)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    private var isOnScreen: Bool {
+        window != nil && bounds.width > 1 && bounds.height > 1
+    }
+
+    private func attachTerminal() {
+        guard isOnScreen, terminal.superview !== self else { return }
+        if let owner = terminal.superview as? TerminalContainerView, owner.isOnScreen { return }
+        terminal.removeFromSuperview()
+        addSubview(terminal)
+        onAttach()
+    }
+
+    /// Lets go of the terminal, handing it to another host of the same terminal if one is on screen.
+    func release() {
+        Self.hosts.remove(self)
+        guard terminal.superview === self else { return }
+        terminal.removeFromSuperview()
+        Self.hosts.allObjects.first { $0.terminal === terminal && $0.isOnScreen }?.attachTerminal()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        attachTerminal()
+    }
+
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
+        attachTerminal()
         fitTerminal()
     }
 
     override func layout() {
         super.layout()
+        attachTerminal()
         fitTerminal()
     }
 
@@ -433,8 +481,15 @@ final class AgentTerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         let bootstrap: String
         if let cli = kind.executable {
             let resumeLine = resume ? kind.resume.map { "  if \($0.test); then exec \(cli)\($0.arguments); fi\n" } ?? "" : ""
+            // Claude Code runs on the person's own Claude login. An API key in the environment
+            // (even one set by a login profile) would take priority and bill per token instead.
+            // The library's agents run as an agent team: each is a teammate (its own session) the
+            // person can watch and message from the list under the prompt, and the teammates
+            // message each other. Exported after the login profile so it can't be overridden.
+            let useClaudeLogin = kind == .claude
+                ? "unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN\nexport CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1\n" : ""
             bootstrap = """
-            cd \(quoted) 2>/dev/null || cd ~
+            \(useClaudeLogin)cd \(quoted) 2>/dev/null || cd ~
             if command -v \(cli) >/dev/null 2>&1; then
             \(resumeLine)  exec \(cli)\(kind.arguments)
             else

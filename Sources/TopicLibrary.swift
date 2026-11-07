@@ -76,6 +76,29 @@ enum TopicLibrary {
                 try? fm.copyItem(at: bundled.appendingPathComponent(name), to: dest)
             }
         }
+        // Offline libraries for rich pages (D3, KaTeX), per library folder. The pages and the
+        // `rich-visuals` skill load them by relative path, so every library needs its own copy.
+        seedItems(from: bundled.appendingPathComponent("_assets"), to: root.appendingPathComponent("_assets"))
+        #if os(macOS)
+        seedItems(from: bundled.appendingPathComponent("agents"), to: root.appendingPathComponent(".claude/agents"))
+        seedItems(from: bundled.appendingPathComponent("skills"), to: root.appendingPathComponent(".claude/skills"))
+        #endif
+    }
+
+    /// Copies each bundled item (a subagent file, a skill folder, a library folder) into `dest`
+    /// where it is missing: the team's agents and skills go in the library's hidden `.claude/`,
+    /// where the agent panel's Claude Code finds them. Never overwrites, for the same reason as `seed`.
+    private static func seedItems(from source: URL, to dest: URL) {
+        let fm = FileManager.default
+        let items = (try? fm.contentsOfDirectory(at: source, includingPropertiesForKeys: nil)) ?? []
+        guard !items.isEmpty else { return }
+        try? fm.createDirectory(at: dest, withIntermediateDirectories: true)
+        for item in items {
+            let target = dest.appendingPathComponent(item.lastPathComponent)
+            if !fm.fileExists(atPath: target.path) {
+                try? fm.copyItem(at: item, to: target)
+            }
+        }
     }
 
     // MARK: - Names
@@ -281,5 +304,36 @@ extension FileNode {
         guard isDirectory else { return isHTML ? 1 : 0 }
         let own = FileManager.default.fileExists(atPath: url.appendingPathComponent(TopicLibrary.indexFile).path) ? 1 : 0
         return own + (children ?? []).reduce(0) { $0 + $1.pageCount }
+    }
+}
+
+/// Collapsible groups of topics in the sidebar. A topic's group comes from the tags on its
+/// `index.html`: `certification` (or `exams`) → Certifications, `math` → Math, `physics` → Physics.
+/// Topics with none of these (`.other`) are listed below the sections without a heading.
+enum TopicSection: String, CaseIterable, Identifiable {
+    case certifications = "Certifications"
+    case math = "Math"
+    case physics = "Physics"
+    case other = "Other"
+
+    var id: String { rawValue }
+
+    var symbol: String {
+        switch self {
+        case .certifications: return "rosette"
+        case .math: return "function"
+        case .physics: return "atom"
+        case .other: return "tray"
+        }
+    }
+
+    /// An explicit `certification` tag wins; `exams` alone only counts when no subject tag is set.
+    static func of(tags: [String]) -> TopicSection {
+        let tags = Set(tags)
+        if !tags.isDisjoint(with: ["certification", "certifications"]) { return .certifications }
+        if !tags.isDisjoint(with: ["math", "mathematics"]) { return .math }
+        if tags.contains("physics") { return .physics }
+        if !tags.isDisjoint(with: ["exams", "exam-prep"]) { return .certifications }
+        return .other
     }
 }
