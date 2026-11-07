@@ -140,6 +140,10 @@ partner and strengthen it until it can be built:
 - Tabs: **Claude Code** (`claude --dangerously-skip-permissions --model claude-opus-5-5 --effort
   high`, resumes with `--continue`),
   **Codex**, **Terminal** — all started in the library root so `CLAUDE.md` applies.
+- **Voice:** dictation apps such as the user's LahLah Voice paste what is said into the focused
+  app. A paste on a page (`PageWebView`, not in a field on the page) goes to Claude Code's prompt
+  via `AgentPanelModel.paste`, opening the panel and focusing the terminal without submitting.
+  LahLah lists Wiki LLM (`com.tertiaryinfotech.markdownapp`) as an AI app, so it pastes verbatim.
 - Sidebar context menus offer Outline / Lint / Ingest on folders (`WikiAction`). Each types a
   single-line instruction scoped to that folder into Claude Code, waiting until it is ready and
   never while a startup prompt such as the folder trust check is on screen.

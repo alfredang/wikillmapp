@@ -23,7 +23,11 @@ struct HTMLPageView {
 
     private func makeWebView(_ coordinator: Coordinator) -> WKWebView {
         let config = WKWebViewConfiguration()
+        #if os(macOS)
+        let webView: WKWebView = PageWebView(frame: .zero, configuration: config)
+        #else
         let webView = WKWebView(frame: .zero, configuration: config)
+        #endif
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
         if #available(macOS 13.3, iOS 16.4, *) { webView.isInspectable = true }
@@ -236,5 +240,38 @@ extension HTMLPageView: UIViewRepresentable {
         return webView
     }
     func updateUIView(_ webView: WKWebView, context: Context) { load(webView, context.coordinator) }
+}
+#endif
+
+#if os(macOS)
+/// The page's web view. A paste while reading a page (not typing in one of its fields) goes to
+/// Claude Code's prompt instead of being lost: that is how voice dictation (LahLah Voice pastes
+/// what you say into the focused app) lets the person talk to the agent about the page on screen.
+final class PageWebView: WKWebView {
+    // WKWebView handles `paste:` in Objective-C without exposing it to Swift, so this is a new
+    // @objc method with the same selector; the page's own paste is reached through the runtime.
+    @objc func paste(_ sender: Any?) {
+        // Read now: dictation apps deliver the text as a pasteboard promise and treat a paste
+        // nobody reads as failed.
+        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
+            pasteIntoPage(sender); return
+        }
+        let editable = "(function(){var e=document.activeElement;return !!e&&(e.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName));})()"
+        evaluateJavaScript(editable) { [weak self] result, _ in
+            if (result as? Bool) == true {
+                self?.pasteIntoPage(sender)
+            } else {
+                AgentPanelModel.shared.paste(text)
+            }
+        }
+    }
+
+    /// WebKit's own paste, for a field on the page.
+    private func pasteIntoPage(_ sender: Any?) {
+        let selector = NSSelectorFromString("paste:")
+        guard let imp = class_getMethodImplementation(WKWebView.self, selector) else { return }
+        typealias PasteIMP = @convention(c) (AnyObject, Selector, Any?) -> Void
+        unsafeBitCast(imp, to: PasteIMP.self)(self, selector, sender)
+    }
 }
 #endif

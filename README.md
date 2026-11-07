@@ -27,6 +27,8 @@ your own intuitions, tests and extends them, and turns them into notes you can e
   as soon as the file changes. Each library ships its own copies of KaTeX, D3, Observable Plot,
   JSXGraph, Mermaid, Matter.js and highlight.js in `_assets/`, for diagrams, animations, draggable
   constructions, simulations and charts. No CDNs.
+- 🎙 **Talk instead of typing** — with a dictation app such as LahLah Voice, speak while reading a
+  page: the words go straight into Claude Code's prompt, ready to send.
 - 🔍 **Click to zoom** — diagrams, images and figures open full screen with pinch/scroll zoom and
   drag to pan, on every page.
 - ∑ **LaTeX everywhere** — formulas are written as LaTeX and typeset by KaTeX; the app renders

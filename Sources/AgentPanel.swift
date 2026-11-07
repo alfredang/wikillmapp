@@ -185,6 +185,18 @@ final class AgentPanelModel: ObservableObject {
         if tab.exited { restart(kind, resume: true) } else { sessions[kind]?.enqueue(cmd) }
     }
 
+    /// Puts text into Claude Code's prompt without submitting it: dictation (e.g. LahLah Voice)
+    /// that lands on a page instead of the terminal. Opens the panel and gives the terminal the
+    /// keyboard, so a spoken "press enter" or Return submits it.
+    func paste(_ text: String, to kind: AgentKind = .claude) {
+        UserDefaults.standard.set(true, forKey: "agentPanelVisible")
+        select(kind)
+        if tab(kind)?.exited == true { restart(kind, resume: true) }
+        guard let tab = tab(kind) else { return }
+        let session = session(for: tab)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { session.pasteText(text) }
+    }
+
     /// Types an instruction into an agent (starting it if needed) and submits it.
     func send(_ prompt: String, to kind: AgentKind = .claude) {
         select(kind)
@@ -539,6 +551,17 @@ final class AgentTerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         }
         let view = view
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { view.send(txt: "\r") }
+    }
+
+    /// Pastes text at the prompt as the terminal's own paste would (bracketed when the agent
+    /// asks for it), without clearing what is there or pressing Return.
+    func pasteText(_ text: String) {
+        if let terminal = view.terminal, terminal.bracketedPasteMode {
+            view.send(txt: "\u{1b}[200~" + text + "\u{1b}[201~")
+        } else {
+            view.send(txt: text)
+        }
+        focus()
     }
 
     func setActive(_ active: Bool) {
