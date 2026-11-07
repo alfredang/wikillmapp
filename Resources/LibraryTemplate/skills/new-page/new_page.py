@@ -21,11 +21,12 @@ LIBS = {
              "'\\\\Q':'\\\\mathbb{{Q}}','\\\\R':'\\\\mathbb{{R}}','\\\\C':'\\\\mathbb{{C}}','\\\\Z':'\\\\mathbb{{Z}}','\\\\N':'\\\\mathbb{{N}}',"
              "'\\\\F':'\\\\mathbb{{F}}','\\\\Gal':'\\\\operatorname{{Gal}}','\\\\Aut':'\\\\operatorname{{Aut}}','\\\\tr':'\\\\operatorname{{tr}}'}},"
              'throwOnError:false}})"></script>',
+    "zoom": '<script defer src="{p}zoom/zoom.js"></script>',
     "d3": '<script src="{p}d3/d3.min.js"></script>',
     "plot": '<script src="{p}d3/d3.min.js"></script>\n<script src="{p}plot/plot.umd.min.js"></script>',
     "jsxgraph": '<link rel="stylesheet" href="{p}jsxgraph/jsxgraph.css">\n<script src="{p}jsxgraph/jsxgraphcore.js"></script>',
     "mermaid": '<script src="{p}mermaid/mermaid.min.js"></script>\n<script>addEventListener("DOMContentLoaded",function(){{'
-               'mermaid.initialize({{startOnLoad:true,securityLevel:"strict",theme:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"neutral"}})}})</script>',
+               'mermaid.initialize({{startOnLoad:true,securityLevel:"strict",themeVariables:{{fontSize:"16px"}},theme:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"neutral"}})}})</script>',
     "matter": '<script src="{p}matter/matter.min.js"></script>',
     "highlight": '<link rel="stylesheet" href="{p}highlight/github.min.css" media="(prefers-color-scheme: light)">\n'
                  '<link rel="stylesheet" href="{p}highlight/github-dark.min.css" media="(prefers-color-scheme: dark)">\n'
@@ -87,7 +88,7 @@ def build(template, rel, title, desc, keywords, tags, libs, body, eyebrow, topic
     doc = re.sub(r'<meta name="keywords" content="[^"]*">', f'<meta name="keywords" content="{html.escape(keywords, quote=True)}">', doc)
     if 'name="keywords"' not in doc:
         doc = doc.replace('<meta name="tags"', f'<meta name="keywords" content="{html.escape(keywords, quote=True)}">\n<meta name="tags"', 1)
-    includes = "\n".join(LIBS[l].format(p=prefix) for l in ["katex"] + [l for l in libs if l != "katex"])
+    includes = "\n".join(LIBS[l].format(p=prefix) for l in ["katex", "zoom"] + [l for l in libs if l not in ("katex", "zoom")])
     doc = re.sub(r"(</style>)", r"\1\n" + includes.replace("\\", "\\\\"), doc, count=1)
     m = re.search(r"<main[^>]*>", doc)
     end = doc.rfind("<footer")

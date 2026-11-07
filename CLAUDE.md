@@ -167,7 +167,8 @@ Legacy helper for Markdown wikis (pre-HTML). Not used by the Topics library.
   Feedback / About) and a
   detail area = `TopicDetailView` + draggable divider (`PanelResizeHandle`) + `AgentPanel`.
 - **Maths is LaTeX** (`\( … \)`, `\[ … \]`). `HTMLPageView` typesets it with the library's
-  `_assets/katex` after load on any page that doesn't load KaTeX itself (`renderMath`).
+  `_assets/katex` after load on any page that doesn't load KaTeX itself (`renderMath`), and adds
+  click-to-zoom (`_assets/zoom/zoom.js`, read from the app bundle) to every page.
 - `TopicDetailView`: folder → its `index.html` (or `FolderOverview` cards); HTML page →
   `HTMLPageView` (WKWebView) in Preview / Split / Source (`HTMLSourceEditor`); `.md` →
   `MarkdownEditorView`. `LibraryHomeView` when nothing is selected. `LocalFileGate` fetches a

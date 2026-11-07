@@ -27,6 +27,8 @@ your own intuitions, tests and extends them, and turns them into notes you can e
   as soon as the file changes. Each library ships its own copies of KaTeX, D3, Observable Plot,
   JSXGraph, Mermaid, Matter.js and highlight.js in `_assets/`, for diagrams, animations, draggable
   constructions, simulations and charts. No CDNs.
+- 🔍 **Click to zoom** — diagrams, images and figures open full screen with pinch/scroll zoom and
+  drag to pan, on every page.
 - ∑ **LaTeX everywhere** — formulas are written as LaTeX and typeset by KaTeX; the app renders
   LaTeX on any page that contains it, even one that forgot to load KaTeX.
 - 🔗 **Obsidian-style links** — relative links and `[[wikilinks]]`, with hover previews, backlinks

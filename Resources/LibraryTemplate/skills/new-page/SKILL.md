@@ -20,7 +20,7 @@ description: Create a new topic, subtopic or page in this library correctly from
      --title "The Exponential Map" --description "…" --keywords "…" --libs d3,jsxgraph
    ```
 
-   Libraries: `d3`, `plot`, `jsxgraph`, `mermaid`, `matter`, `highlight` (KaTeX is always included).
+   Libraries: `d3`, `plot`, `jsxgraph`, `mermaid`, `matter`, `highlight` (KaTeX and click-to-zoom are always included).
    Topic `index.html` tags decide the sidebar section: `math`, `physics`, `certification`.
 4. **Write it** following `insight-pages` (shape, intuition handling, insight test), with all maths
    and numbers in LaTeX (`latex-math`) and a visual that reveals something (`rich-visuals`). Write

@@ -22,6 +22,7 @@ sidebar, and pages may read any file inside the library. **Never use a CDN.**
 | JSXGraph 1.14 | `jsxgraph/jsxgraphcore.js`, `jsxgraph.css` | Draggable geometry and function plots that keep their constraints: points, lines, circles, sliders, curves |
 | Mermaid 12 | `mermaid/mermaid.min.js` | Flowcharts, sequence, state, class, timeline and mind-map diagrams written as text |
 | Matter.js 0.20 | `matter/matter.min.js` | 2D physics: bodies, gravity, collisions, springs, constraints |
+| zoom | `zoom/zoom.js` | Click-to-zoom viewer for diagrams, images and figures (scroll/pinch, drag, Esc) |
 | highlight.js 11 | `highlight/highlight.min.js`, `github.min.css`, `github-dark.min.css` | Colour-coded code samples |
 
 Plain inline SVG and vanilla JS also work, need no library, and are often enough. The
@@ -43,6 +44,26 @@ Start from the insight, not the library. Ask what the reader should *see*, then 
 | a 3D object | orthographic view rotated by dragging | D3/vanilla (see Patterns, 6) |
 
 Tested, ready-to-adapt code for recipes 1–4 is in `.claude/skills/rich-visuals/recipes.html`.
+
+## Size, legibility and zoom
+
+A visual the reader has to squint at has failed. On a normal page width (about 760 px):
+
+- **Text in a figure is at least 13 px** when shown at page width. Check the screenshot, not the code.
+- **Mermaid: at most 4–5 nodes per row.** A long chain in `flowchart LR` shrinks to fit the width and
+  the labels become tiny: use `flowchart TD`, split it into rows with subgraphs, or break it into two
+  diagrams. Keep labels to two short lines. Initialise with a readable font:
+  `mermaid.initialize({startOnLoad:true, securityLevel:"strict", theme:…, themeVariables:{fontSize:"16px"}, flowchart:{useMaxWidth:true}})`.
+- **SVG:** set a `viewBox` and `style="width:100%;height:auto"`, draw at the size it will be shown,
+  and use `font-size` of 13 or more in viewBox units scaled for that width.
+- **Wide or dense figures** (big trees, tables of diagrams, Cayley tables): give them their own
+  full-width card, or let the reader scroll horizontally inside it, rather than shrinking them.
+- **Click to zoom.** Include `<script defer src="../../_assets/zoom/zoom.js"></script>` (the `new-page`
+  script adds it). Mermaid diagrams, images and `figure.zoom` open full screen on click; other
+  sizeable SVGs and canvases get a ⤢ button so their own controls keep working. Add class `zoom` to
+  a figure to make it click-to-zoom, `nozoom` to opt out. The app adds zoom to every page anyway, but
+  include it so pages zoom in a plain browser too. Zoom is the backup, not the fix: a figure must be
+  legible at page width first.
 
 ## Include with a relative path
 
@@ -85,7 +106,7 @@ Same relative prefix as above. Load only what the page uses.
 <script src="../../_assets/mermaid/mermaid.min.js"></script>
 <pre class="mermaid">flowchart LR
   A[Symmetry] --> B[Representation] --> C[Character = trace]</pre>
-<script>mermaid.initialize({startOnLoad:true, securityLevel:"strict",
+<script>mermaid.initialize({startOnLoad:true, securityLevel:"strict", themeVariables:{fontSize:"16px"},
   theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "neutral"});</script>
 
 <!-- Matter.js: a small physics scene -->
@@ -151,11 +172,13 @@ it. A topic or subtopic `index.html` opens with a visual map of how its ideas co
 1. Extract each inline `<script>` and run `node --check` on it.
 2. Run `node .claude/skills/latex-math/check_math.js <page>` for the maths.
 3. Check every `../_assets/...` path resolves from the page's folder.
-4. Render it: `sh .claude/skills/rich-visuals/serve.sh` serves the library on a free local port; open
+4. Check every figure is legible at page width (text ≥ 13 px, Mermaid ≤ 5 nodes per row) and opens in
+   the zoom viewer.
+5. Render it: `sh .claude/skills/rich-visuals/serve.sh` serves the library on a free local port; open
    the page with the Playwright browser tools, take a screenshot, read the console for errors, move
    each control once, and look at it in dark mode too. Stop the server with `kill <pid>` afterwards.
-5. Verify every number a visual displays against the topic's `runs/` or its sources.
-6. Without JavaScript the page must still make sense: prose and a static SVG carry the argument,
+6. Verify every number a visual displays against the topic's `runs/` or its sources.
+7. Without JavaScript the page must still make sense: prose and a static SVG carry the argument,
    and the interactive deepens it.
 
 ## Example: a D3 line chart that animates in

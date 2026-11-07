@@ -78,6 +78,7 @@ struct HTMLPageView {
             retries = 0
             applyScript(webView)
             renderMath(webView)
+            if let zoom = Self.zoomScript { webView.evaluateJavaScript(zoom) }
             if let y = restoreScrollY {
                 restoreScrollY = nil
                 webView.evaluateJavaScript("window.scrollTo(0, \(y))")
@@ -133,6 +134,13 @@ struct HTMLPageView {
                 DispatchQueue.main.async { webView?.evaluateJavaScript(js) }
             }
         }
+
+        /// Click-to-zoom for diagrams, images and figures (`_assets/zoom/zoom.js`, bundled with the
+        /// app), so small visuals can be opened full screen on every page. It does nothing on a
+        /// page that already loads it.
+        private static let zoomScript: String? = Bundle.main
+            .url(forResource: "zoom", withExtension: "js", subdirectory: "LibraryTemplate/_assets/zoom")
+            .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
 
         private static let mathScript = #"""
         (function (base) {
