@@ -72,7 +72,7 @@ enum TopicLibrary {
         guard let bundled = Bundle.main.url(forResource: "LibraryTemplate", withExtension: nil) else { return }
         for name in [schemaFile, templateFile] {
             let dest = root.appendingPathComponent(name)
-            if !fm.fileExists(atPath: dest.path) {
+            if !exists(dest) {
                 try? fm.copyItem(at: bundled.appendingPathComponent(name), to: dest)
             }
         }
@@ -85,6 +85,16 @@ enum TopicLibrary {
         #endif
     }
 
+    /// True when the file is there, or iCloud holds it and the device has only its placeholder
+    /// (`.name.icloud`). Seeding must not write a fresh copy over a file still in iCloud: that
+    /// would replace the person's customised schema with the default one.
+    private static func exists(_ url: URL) -> Bool {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: url.path) { return true }
+        let placeholder = url.deletingLastPathComponent().appendingPathComponent("." + url.lastPathComponent + ".icloud")
+        return fm.fileExists(atPath: placeholder.path)
+    }
+
     /// Copies each bundled item (a subagent file, a skill folder, a library folder) into `dest`
     /// where it is missing: the team's agents and skills go in the library's hidden `.claude/`,
     /// where the agent panel's Claude Code finds them. Never overwrites, for the same reason as `seed`.
@@ -95,7 +105,7 @@ enum TopicLibrary {
         try? fm.createDirectory(at: dest, withIntermediateDirectories: true)
         for item in items {
             let target = dest.appendingPathComponent(item.lastPathComponent)
-            if !fm.fileExists(atPath: target.path) {
+            if !exists(target) {
                 try? fm.copyItem(at: item, to: target)
             }
         }

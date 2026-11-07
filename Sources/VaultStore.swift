@@ -2,6 +2,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 #if os(macOS)
 import CoreServices   // FSEvents — live folder watching
+#else
+import UIKit
 #endif
 
 /// Owns the open Topics library (a local folder — see `TopicLibrary`), its file tree, the
@@ -11,7 +13,13 @@ import CoreServices   // FSEvents — live folder watching
 final class VaultStore: ObservableObject {
     @Published var rootURL: URL?
     @Published var rootNode: FileNode?
-    @Published var selectedFileURL: URL?
+    @Published var selectedFileURL: URL? {
+        didSet {
+            #if os(macOS)
+            if selectedFileURL != oldValue { noteViewingPage() }
+            #endif
+        }
+    }
     /// Bumped on every tree refresh (including live FSEvents refreshes), so views showing a
     /// file can notice it changed on disk — e.g. when the agent rewrites a page.
     @Published private(set) var revision = 0
@@ -64,6 +72,17 @@ final class VaultStore: ObservableObject {
         recentVaults = (UserDefaults.standard.array(forKey: Keys.recents) as? [String] ?? [])
             .map { URL(fileURLWithPath: $0, isDirectory: true) }
         displayNames = UserDefaults.standard.dictionary(forKey: Keys.displayNames) as? [String: String] ?? [:]
+        #if os(iOS)
+        // iOS has no folder watcher: pick up what the Mac changed whenever the app comes back.
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification,
+                                               object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.rootURL != nil else { return }
+                self.refresh()
+                self.syncFromICloud()
+            }
+        }
+        #endif
     }
 
     // MARK: - Menu bridges
@@ -84,7 +103,97 @@ final class VaultStore: ObservableObject {
         addRecent(url)
         refresh()
         startWatching(url)
+        #if os(iOS)
+        syncFromICloud()
+        #endif
     }
+
+    #if os(macOS)
+    /// Tells the agent which page is on screen, so "this page" means what the person sees and
+    /// their questions land in that page's Discussion section. Written to
+    /// `.claude/viewing.nosync`: iCloud Drive doesn't sync `.nosync` items, so following links
+    /// doesn't upload a file each time.
+    private func noteViewingPage() {
+        guard let root = rootURL, let selected = selectedFileURL else { return }
+        let page = pageURL(for: selected) ?? selected
+        let rootPath = root.standardizedFileURL.path
+        let path = page.standardizedFileURL.path
+        guard path.hasPrefix(rootPath + "/") else { return }
+        let relative = String(path.dropFirst(rootPath.count + 1))
+        let title = links.pages[page.standardizedFileURL]?.title ?? page.lastPathComponent
+        let text = "\(relative)\n\(title)\n"
+        let target = root.appendingPathComponent(".claude/viewing.nosync")
+        DispatchQueue.global(qos: .utility).async {
+            try? FileManager.default.createDirectory(at: target.deletingLastPathComponent(),
+                                                     withIntermediateDirectories: true)
+            try? text.write(to: target, atomically: true, encoding: .utf8)
+        }
+    }
+    #endif
+
+    #if os(iOS)
+    // MARK: - iCloud Drive on iPhone and iPad
+    // A library in iCloud Drive (e.g. the Mac's ~/Documents/Tertiary Topics, opened from Files)
+    // arrives on iOS as placeholders: a page isn't on the device until something asks for it,
+    // and until then it can't be read, linked or searched. Ask iOS to download every page, and
+    // refresh while the downloads land.
+
+    private var downloadPolls = 0
+
+    func syncFromICloud() {
+        guard let root = rootURL else { return }
+        Task.detached(priority: .utility) { [weak self] in
+            let pending = VaultStore.requestDownloads(in: root)
+            await MainActor.run { self?.afterDownloadRequest(pending: pending, root: root) }
+        }
+    }
+
+    private func afterDownloadRequest(pending: Int, root: URL) {
+        guard rootURL == root else { return }
+        if pending > 0, downloadPolls < 90 {
+            downloadPolls += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                guard let self, self.rootURL == root else { return }
+                self.refresh()
+                self.syncFromICloud()
+            }
+        } else {
+            if downloadPolls > 0 { refresh() }
+            downloadPolls = 0
+        }
+    }
+
+    /// Starts downloading every page and asset not yet on the device (skipping `raw/` sources,
+    /// `runs/` and dot-folders), and returns how many were still missing.
+    nonisolated static func requestDownloads(in root: URL) -> Int {
+        let fm = FileManager.default
+        guard let walker = fm.enumerator(at: root,
+                                         includingPropertiesForKeys: [.isDirectoryKey, .ubiquitousItemDownloadingStatusKey])
+        else { return 0 }
+        var pending = 0
+        for case let url as URL in walker {
+            let name = url.lastPathComponent
+            if name.hasPrefix("."), name.hasSuffix(".icloud") {
+                // Legacy placeholder: ".page.html.icloud" stands for "page.html".
+                let real = url.deletingLastPathComponent()
+                    .appendingPathComponent(String(name.dropFirst().dropLast(".icloud".count)))
+                try? fm.startDownloadingUbiquitousItem(at: real)
+                pending += 1
+                continue
+            }
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .ubiquitousItemDownloadingStatusKey])
+            if values?.isDirectory == true {
+                if name.hasPrefix(".") || name == "raw" || name == "runs" { walker.skipDescendants() }
+                continue
+            }
+            if let status = values?.ubiquitousItemDownloadingStatus, status != .current {
+                try? fm.startDownloadingUbiquitousItem(at: url)
+                if status == .notDownloaded { pending += 1 }
+            }
+        }
+        return pending
+    }
+    #endif
 
     /// Opens (creating and seeding when needed) the default library folder.
     func openDefaultLibrary() {

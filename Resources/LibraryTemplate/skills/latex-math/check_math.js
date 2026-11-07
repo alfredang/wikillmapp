@@ -16,10 +16,11 @@ for (const file of process.argv.slice(2)) {
   const body = html.replace(/<script\b[\s\S]*?<\/script>/gi, "").replace(/<style\b[\s\S]*?<\/style>/gi, "")
     .replace(/<(pre|code)\b[\s\S]*?<\/\1>/gi, "");
   const problems = [];
+  let pageFormulas = 0;
   const rx = /\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)/g;
   let m;
   while ((m = rx.exec(body))) {
-    formulas++;
+    formulas++; pageFormulas++;
     const tex = decode((m[1] ?? m[2]).replace(/<[^>]+>/g, ""));
     try { katex.renderToString(tex, { displayMode: m[1] !== undefined, throwOnError: true, macros: { ...macros }, strict: "ignore" }); }
     catch (e) { problems.push(`  formula error: ${e.message.split("\n")[0]}\n    in: ${tex.slice(0, 120)}`); }
@@ -28,7 +29,7 @@ for (const file of process.argv.slice(2)) {
   if (spans) problems.push(`  ${spans} old <span class="m"> maths left to convert`);
   const dollars = (body.replace(/<[^>]+>/g, "").match(/\$[^$\s][^$]*\$/g) || []).filter(s => /[\\^_{}]/.test(s));
   if (dollars.length) problems.push(`  ${dollars.length} $…$ formulas (use \\( \\) instead): ${dollars[0].slice(0, 60)}`);
-  if (formulas && !/katex\.min\.js/.test(html)) problems.push("  uses LaTeX but doesn't include _assets/katex");
+  if (pageFormulas && !/katex\.min\.js/.test(html)) problems.push("  uses LaTeX but doesn't include _assets/katex");
   if (problems.length) { failures += problems.length; console.log(file + "\n" + problems.join("\n")); }
 }
 console.log(`${formulas} formulas checked, ${failures} problem${failures === 1 ? "" : "s"}`);

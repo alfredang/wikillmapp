@@ -70,7 +70,8 @@ the prompt). They run on your own Claude login; there is no API key.
 
 The team is active: each agent has standing duties it does unasked. Every intuition you offer goes
 onto its page with the team's verdict (sound, needs a fix, or goes further), and concept pages end
-with an "Explain it to others" section. The Agents section of the sidebar shows every agent's
+with a "How to explain it" section, and every question you ask is kept in a compact Discussion
+section at the bottom of its page. The Agents section of the sidebar shows every agent's
 model, tools, skills and instructions.
 
 > ⚠️ Claude Code runs with `--dangerously-skip-permissions`, in the library folder, so it can
@@ -161,6 +162,10 @@ xcodebuild -project MarkdownVault.xcodeproj -scheme MarkdownVault -destination '
 
 On first launch the app creates a library at `~/Documents/Tertiary Topics` (app Documents on iOS).
 Use ⌘O to open any other folder as a library.
+
+**On iPhone and iPad:** if your Mac syncs Desktop & Documents to iCloud, the library is already in
+iCloud Drive. In the iOS app, open the folder (Files › iCloud Drive › Documents › Tertiary Topics);
+the app downloads every page and picks up the Mac's changes whenever you come back to it.
 
 > The Mac build in this repo runs **without the App Sandbox** so its terminals can start a real
 > login shell. That makes this build **not App Store eligible**; keep it for personal and

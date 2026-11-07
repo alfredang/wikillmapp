@@ -51,7 +51,7 @@ Use **Opus at high effort** by default. In a library, the main session is the le
 
 The team is active, not passive: each teammate has standing duties it does unasked, and every insight
 the user offers is written into the page it belongs to with the team's verdict (sound / needs a fix /
-goes further) and an "Explain it to others" section, so the library becomes the user's own notes.
+goes further) and a "How to explain it" section, so the library becomes the user's own notes.
 
 Judge new app features by the same mission. For content work, the operations that carry it out
 (capture, develop, debate, spark, explore, theorize, cross, investigate, tournament, publish) are
@@ -110,6 +110,15 @@ partner and strengthen it until it can be built:
 - **Search** (`TagFilterBar`, above the sidebar): plain words match titles, summaries, keywords,
   folders and tags; a word starting with `@` searches tags and shows matching tag chips (`@`
   alone lists every tag).
+- **Discussion**: every page ends with a compact Discussion section (one line per question,
+  newest first, older folded, never deleted), written only by the library's `discussion` skill
+  script. On macOS the app writes the page on screen to `.claude/viewing.nosync` (iCloud skips
+  `.nosync`), so the agent knows what "this page" is.
+- **iCloud**: the default library sits in iCloud Drive when the Mac syncs Desktop & Documents.
+  On iOS, open it from Files (iCloud Drive › Documents › Tertiary Topics); `VaultStore`
+  asks iOS to download every page (`syncFromICloud`) and refreshes when the app comes back.
+  Seeding treats an iCloud placeholder (`.name.icloud`) as present, so it never writes a
+  default over a file still in iCloud.
 - To create or update content, just **write the files**. The app watches the folder (FSEvents)
   and reloads the page on screen when it changes.
 

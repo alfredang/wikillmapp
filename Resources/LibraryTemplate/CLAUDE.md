@@ -50,6 +50,13 @@ the result in a browser.
 point where an analogy fails is often the sharpest insight. When the person offers an analogy,
 keep it in their words, test it, and give the repaired version.
 
+**Keep every question in a Discussion section.** Every query and discussion the person has about
+a page's subject is recorded on that page, in the Discussion section at the very bottom, so they can
+review what they asked and how their thinking moved. Each entry is dated, with their question
+verbatim, the answer in short (the key insight and any correction), and links to where it led. The
+newest are shown first; older ones fold into "Earlier discussion" but are never deleted. A question
+that spans a whole topic goes in the topic `index.html`. See "The Discussion section" below.
+
 **Build on the person's thinking, and help them explain it.** Their insights, questions and
 analogies are the spine of a page, not a side collection: open from their question, develop their
 idea in place (labelled), and say where it needed repair. End every explanatory page with a
@@ -178,13 +185,14 @@ them.
 3. **Build the page around their thinking.** Order a page by the person's line of reasoning: their
    question, their first intuition, what holds, what breaks, the repair, the general idea. Put
    definitions after the intuition that motivates them.
-4. **Help them explain it.** Every concept page ends with an **Explain it to others** section:
+4. **Help them explain it.** Every explanatory page has a **How to explain it** section (just
+   before Related, above the Discussion):
    - the idea in one sentence;
-   - an everyday analogy, the person's own (repaired if needed) when they have one;
-   - a two-minute explanation in plain words, built on that analogy;
-   - the questions people will ask, with short answers;
-   - the common misconceptions, and how to correct them;
-   - the visual on the page to show while explaining.
+   - an everyday analogy, the person's own (repaired if needed) when they have one, or a physical
+     demo, and the visual on the page to show;
+   - a short script to say, in plain words, built on that analogy;
+   - what not to say: the common misconceptions, and how to correct them;
+   - the questions people will ask, with short answers, and a question to ask the listener.
 5. **The team works on their insights.** `wiki-critic` tests each new intuition, `wiki-idea-partner`
    takes it further, `wiki-visualizer` turns the person's own analogy into an interactive where it can
    (sliders for the footballs' axes, say), and `wiki-organizer` links it to every page where the same
@@ -192,6 +200,17 @@ them.
 
 Label the boxes as page rule 10 says: the person's words are **Your idea**, the team's repair or
 extension is **Conjecture** until it is argued, and facts carry a source.
+
+### The Discussion section
+
+Every page ends with a **Discussion** section, below Related and Sources, that records the person's
+questions and our exchanges about it, newest first, with the latest three open and older ones
+collapsed. Nothing in it is ever deleted. It keeps their thinking
+process. After answering anything they ask or propose about a page, record it there with the
+`discussion` skill's script (never by hand), in their own words, with a short self-contained answer.
+The page they are viewing is in `.claude/viewing.nosync`, written by the app; a question about a
+whole topic goes on its `index.html`.
+
 
 ## Operations
 
@@ -289,7 +308,8 @@ under the prompt (↑/↓ to select, Enter to open, Ctrl+T for the task list).
   critic's sharpest objection, word for word; the idea-partner's next idea; the visual the visualizer
   proposes next; and anything a teammate flagged. Offer to act on them.
 - **Capture the person's insights.** Every intuition, analogy or question the person offers goes onto
-  its page with the team's verdict, as "Make them the person's notes" says.
+  its page with the team's verdict, as "Make them the person's notes" says, and into that page's
+  Discussion section with the `discussion` skill.
 - **Look for work.** When a request is done, propose the next step yourself: an orphan page to link,
   an idea that has stopped moving, a page with no visual, a claim with no source.
 
