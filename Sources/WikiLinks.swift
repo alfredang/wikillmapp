@@ -156,7 +156,8 @@ struct LinkIndex: Sendable {
             for href in allMatches(#"(?i)<a\b[^>]*\bhref="([^"]+)""#, in: text) {
                 if let t = index.resolveHref(href, from: page) { targets.insert(t) }
             }
-            for link in allMatches(#"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]"#, in: text) {
+            // `(?<!\\)`: `\[[` opens display maths (LaTeX), not a wikilink.
+            for link in allMatches(#"(?<!\\)\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]"#, in: text) {
                 if let t = index.resolve(link) { targets.insert(t) }
             }
             targets.remove(page)
@@ -247,7 +248,7 @@ struct LinkIndex: Sendable {
       });
       const textNodes = [];
       while (walker.nextNode()) textNodes.push(walker.currentNode);
-      const re = /\[\[([^\]|#]+)(#[^\]|]*)?(?:\|([^\]]+))?\]\]/g;
+      const re = /(?<!\\)\[\[([^\]|#]+)(#[^\]|]*)?(?:\|([^\]]+))?\]\]/g;  // not `\[[` (display maths)
       textNodes.forEach(n => {
         const text = n.nodeValue, frag = document.createDocumentFragment();
         let last = 0, m;
