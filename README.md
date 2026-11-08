@@ -27,9 +27,10 @@ your own intuitions, tests and extends them, and turns them into notes you can e
   as soon as the file changes. Each library ships its own copies of KaTeX, D3, Observable Plot,
   JSXGraph, Mermaid, Matter.js and highlight.js in `_assets/`, for diagrams, animations, draggable
   constructions, simulations and charts. No CDNs.
-- 🎙 **Voice notes to the agent** — WhatsApp-style: hold the mic under the terminal (or the right
-  ⌥ key), talk, release to send; slide left to cancel, up for hands-free. Whisper turns speech into
-  text on your Mac, tuned to your library's vocabulary, so nothing leaves the machine.
+- 🎙 **Voice notes to the agent** — WhatsApp-style, in a LahLah Voice–style white pill under the
+  terminal with a live waveform: hold the mic (or the right ⌥ key, from any app), talk, release to
+  send; slide left to cancel, up for hands-free. Whisper turns speech into text on your Mac, tuned
+  to your library's vocabulary, so nothing leaves the machine.
 - 🔍 **Enlarge any figure** — every diagram and image has an Enlarge button that opens it in a
   full-window popup with zoom in/out, fit and pan.
 - ∑ **LaTeX everywhere** — formulas are written as LaTeX and typeset by KaTeX; the app renders

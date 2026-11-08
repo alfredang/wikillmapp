@@ -249,7 +249,6 @@ struct AgentPanel: View {
                 if model.tab(model.selected)?.exited == true { exitOverlay }
             }
             .clipped()
-            Divider()
             VoiceNoteBar()
         }
         .background(Color(nsColor: .textBackgroundColor))

@@ -26,6 +26,8 @@ final class VoiceNote: ObservableObject {
     /// Recent input levels, 0…1, newest last: the waveform.
     @Published private(set) var levels: [Float] = Array(repeating: 0, count: 36)
     @Published private(set) var elapsed: TimeInterval = 0
+    /// The loudness now, lightly smoothed: drives the wave and the mic's halo.
+    var level: Float { levels.suffix(3).max() ?? 0 }
     /// True until the speech model is downloaded and loaded (the first use downloads ~600 MB).
     @Published private(set) var modelReady = false
 
@@ -216,31 +218,49 @@ final class VoiceNote: ObservableObject {
         }
     }
 
-    // MARK: - Hold the right ⌥ key to talk
+    // MARK: - Hold the right ⌥ key to talk, from any app
 
-    private var keyMonitor: Any?
+    private var keyMonitors: [Any] = []
     private var keyDown = false
 
-    /// Right Option alone, held: talk; released: send. Pressing another key while it's held
-    /// cancels, so ⌥ shortcuts and special characters still work.
+    /// Right Option alone, held: talk; released: send to Claude. It works in every app (a global
+    /// hotkey, so it needs no Fn key and never opens Emoji & Symbols) and brings Wiki LLM forward so
+    /// the recording and the answer are on screen. Pressing another key while it's held cancels, so
+    /// ⌥ shortcuts and special characters still work.
     func installKeyMonitor() {
-        guard keyMonitor == nil else { return }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { event in
-            let note = VoiceNote.shared
-            if event.type == .keyDown {
-                if note.keyDown { note.keyDown = false; note.stop(send: false) }
-                return event
-            }
-            guard event.keyCode == 61 else { return event }          // right Option
-            let pressed = event.modifierFlags.contains(.option)
-            if pressed, !note.keyDown, note.phase == .idle || { if case .message = note.phase { return true }; return false }() {
-                note.keyDown = true
-                note.start()
-            } else if !pressed, note.keyDown {
-                note.keyDown = false
-                if !note.locked { note.stop(send: true) }
-            }
+        guard keyMonitors.isEmpty else { return }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown], handler: { event in
+            VoiceNote.shared.handleKey(event, global: false)
             return event
+        }) { keyMonitors.append(local) }
+        // Other apps' key events reach us only with Accessibility access; ask once.
+        let promptKey = "voiceNote.askedAccessibility"
+        let ask = !UserDefaults.standard.bool(forKey: promptKey)
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: ask] as CFDictionary
+        if !AXIsProcessTrustedWithOptions(options) { UserDefaults.standard.set(true, forKey: promptKey) }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged, .keyDown], handler: { event in
+            Task { @MainActor in VoiceNote.shared.handleKey(event, global: true) }
+        }) { keyMonitors.append(global) }
+    }
+
+    private func handleKey(_ event: NSEvent, global: Bool) {
+        if event.type == .keyDown {
+            if keyDown { keyDown = false; stop(send: false) }
+            return
+        }
+        guard event.keyCode == 61 else { return }          // right Option
+        let pressed = event.modifierFlags.contains(.option)
+        let free: Bool = { if case .message = phase { return true }; return phase == .idle }()
+        if pressed, !keyDown, free {
+            keyDown = true
+            if global {
+                UserDefaults.standard.set(true, forKey: "agentPanelVisible")
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            start()
+        } else if !pressed, keyDown {
+            keyDown = false
+            if !locked { stop(send: true) }
         }
     }
 }
@@ -256,15 +276,18 @@ private final class SampleBuffer: @unchecked Sendable {
 
 // MARK: - The bar under the agent's terminal
 
-/// WhatsApp-style composer: a mic to hold, a recording pill with waveform and timer, and Send.
+/// WhatsApp-style composer in LahLah Voice's white pill, sitting under Claude's terminal: a
+/// ringed mic to hold on the left, a live waveform, and Send.
 struct VoiceNoteBar: View {
     @ObservedObject private var note = VoiceNote.shared
     @State private var pressStart: Date?
     @State private var drag: CGSize = .zero
     @State private var cancelled = false
+    @State private var hovering = false
 
     private let cancelDistance: CGFloat = 90
     private let lockDistance: CGFloat = 50
+    private let micSize: CGFloat = 36
 
     var body: some View {
         HStack(spacing: 10) {
@@ -272,68 +295,85 @@ struct VoiceNoteBar: View {
             case .recording:
                 if note.locked { lockedControls } else { holdingControls }
             case .transcribing:
-                ProgressView().controlSize(.small)
+                ProgressView().controlSize(.small).frame(width: micSize, height: micSize)
                 Text(note.modelReady ? "Turning your voice into text…"
                                      : "Getting the speech model ready (first time downloads about 600 MB)…")
-                    .font(.callout).foregroundStyle(.secondary)
-                Spacer()
+                    .font(.callout.weight(.medium)).lineLimit(1)
+                Spacer(minLength: 0)
             case .message(let text):
+                micButton
                 Image(systemName: "info.circle").foregroundStyle(.secondary)
                 Text(text).font(.callout).foregroundStyle(.secondary).lineLimit(2)
-                Spacer()
-                micButton
+                Spacer(minLength: 0)
             case .idle:
-                Text("Hold to talk to Claude · or hold right ⌥ · tap for hands-free")
-                    .font(.caption).foregroundStyle(.secondary)
-                Spacer()
                 micButton
+                VoiceWave(level: 0.3, barCount: 11, maxHeight: 18, animated: false)
+                Text("Hold to talk to Claude · or right ⌥ · tap for hands-free")
+                    .font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 0)
             }
         }
-        .padding(.horizontal, 12)
-        .frame(height: 46)
-        .background(.bar)
+        .padding(.leading, 6)
+        .padding(.trailing, 8)
+        .frame(height: 48)
+        .background(Capsule().fill(Color.white))
+        .overlay(Capsule().strokeBorder(Color.black.opacity(0.08)))
+        .shadow(color: .black.opacity(0.25), radius: 8, y: 2)
+        .foregroundStyle(Color.black.opacity(0.85))
+        .environment(\.colorScheme, .light)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.black)
         .onAppear {
             note.installKeyMonitor()
             note.prepare()
         }
     }
 
-    // Holding: timer, waveform, "slide to cancel", and the lock hint above the mic.
+    // Holding: mic, timer, waveform and "slide to cancel"; the lock hint sits above the mic.
     private var holdingControls: some View {
         Group {
+            micButton
+                .overlay(alignment: .top) {
+                    Image(systemName: "lock.fill").font(.system(size: 9)).foregroundStyle(.secondary)
+                        .opacity(drag.height < -10 ? 1 : 0.5)
+                        .offset(y: -12)
+                }
             recordingDot
-            Text(timeText).font(.callout.monospacedDigit())
-            Waveform(levels: note.levels)
+            Text(timeText).font(.callout.monospacedDigit().weight(.medium))
+            VoiceWave(level: note.level, maxHeight: 28)
             Text(cancelled ? "Release to cancel" : "‹ Slide to cancel")
-                .font(.caption).foregroundStyle(cancelled ? .red : .secondary)
+                .font(.callout).foregroundStyle(cancelled ? .red : .secondary)
+                .lineLimit(1)
                 .offset(x: max(-60, min(0, drag.width / 2)))
-            Spacer(minLength: 4)
-            VStack(spacing: 2) {
-                Image(systemName: "lock").font(.caption2).foregroundStyle(.secondary)
-                    .opacity(drag.height < -10 ? 1 : 0.6)
-                micButton
-            }
+            Spacer(minLength: 0)
         }
     }
 
-    // Hands-free: delete, timer + waveform, and the send button.
+    // Hands-free: delete, timer + waveform, and Send.
     private var lockedControls: some View {
         Group {
             Button { note.stop(send: false) } label: {
-                Image(systemName: "trash").foregroundStyle(.red)
+                Image(systemName: "trash").font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.red)
+                    .frame(width: micSize, height: micSize)
+                    .contentShape(Circle())
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
             .help("Discard this voice note")
             recordingDot
-            Text(timeText).font(.callout.monospacedDigit())
-            Waveform(levels: note.levels)
+            Text(timeText).font(.callout.monospacedDigit().weight(.medium))
+            VoiceWave(level: note.level, maxHeight: 28)
             Spacer(minLength: 4)
             Button { note.stop(send: true) } label: {
-                Image(systemName: "paperplane.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                Label("Send", systemImage: "arrow.up")
+                    .font(.callout.weight(.semibold))
+                    .labelStyle(.titleAndIcon)
+                    .padding(.horizontal, 14)
+                    .frame(height: 32)
                     .foregroundStyle(Theme.onAccent)
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(Theme.accent))
+                    .background(Capsule().fill(Theme.accent))
+                    .contentShape(Capsule())
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.return, modifiers: [])
@@ -342,7 +382,7 @@ struct VoiceNoteBar: View {
     }
 
     private var recordingDot: some View {
-        Circle().fill(Color.red).frame(width: 9, height: 9)
+        Circle().fill(Color.red).frame(width: 8, height: 8)
             .opacity(Int(note.elapsed * 2) % 2 == 0 ? 1 : 0.35)
             .accessibilityLabel("Recording")
     }
@@ -352,15 +392,27 @@ struct VoiceNoteBar: View {
         return String(format: "%d:%02d", s / 60, s % 60)
     }
 
+    /// LahLah's mark: a white disc with an accent ring. It fills with the accent while recording
+    /// and a halo follows the voice.
     private var micButton: some View {
-        Image(systemName: note.phase == .recording ? "mic.fill" : "mic")
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(note.phase == .recording ? Theme.onAccent : Theme.accent)
-            .frame(width: 34, height: 34)
-            .background(Circle().fill(note.phase == .recording ? Theme.accent : Theme.accent.opacity(0.12)))
-            .scaleEffect(note.phase == .recording && !note.locked ? 1.15 : 1)
+        let recording = note.phase == .recording
+        return Image(systemName: recording ? "mic.fill" : "mic")
+            .font(.system(size: micSize * 0.44, weight: .semibold))
+            .foregroundStyle(recording ? Theme.onAccent : Theme.accent)
+            .frame(width: micSize, height: micSize)
+            .background(Circle().fill(recording ? Theme.accent : (hovering ? Theme.accent.opacity(0.12) : Color.white)))
+            .overlay(Circle().strokeBorder(Theme.accent, lineWidth: 2.5))
+            .background(
+                Circle()
+                    .fill(Theme.accent.opacity(recording ? 0.25 : 0))
+                    .scaleEffect(recording ? 1.1 + CGFloat(note.level) * 0.35 : 1)
+            )
+            .animation(.easeOut(duration: 0.12), value: note.level)
             .animation(.easeOut(duration: 0.15), value: note.phase)
+            .animation(.easeOut(duration: 0.15), value: hovering)
+            .padding(3)                     // a slightly larger click target than the disc
             .contentShape(Circle())
+            .onHover { hovering = $0 }
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
@@ -395,19 +447,42 @@ struct VoiceNoteBar: View {
     }
 }
 
-private struct Waveform: View {
-    let levels: [Float]
+/// LahLah Voice's wave: a symmetric row of bars that swells with the voice and ripples while
+/// it listens. Every fourth bar is in the accent colour.
+private struct VoiceWave: View {
+    var level: Float
+    var barCount = 27
+    var maxHeight: CGFloat = 34
+    var animated = true
+
     var body: some View {
-        HStack(alignment: .center, spacing: 2) {
-            ForEach(Array(levels.enumerated()), id: \.offset) { _, level in
+        if animated {
+            TimelineView(.animation(minimumInterval: 1 / 30)) { context in
+                bars(context.date.timeIntervalSinceReferenceDate)
+            }
+        } else {
+            bars(0)
+        }
+    }
+
+    private func bars(_ time: Double) -> some View {
+        HStack(spacing: 4) {
+            ForEach(0..<barCount, id: \.self) { index in
                 Capsule()
-                    .fill(Theme.accent.opacity(0.85))
-                    .frame(width: 3, height: 4 + CGFloat(level) * 22)
+                    .fill(index % 4 == 0 ? Theme.accent : Color.black.opacity(0.8))
+                    .frame(width: 3.5, height: height(index, time))
             }
         }
-        .frame(height: 28)
-        .animation(.linear(duration: 0.08), value: levels)
+        .frame(height: maxHeight)
         .accessibilityHidden(true)
+    }
+
+    private func height(_ index: Int, _ time: Double) -> CGFloat {
+        let position = Double(index) / Double(max(barCount - 1, 1))
+        let shape = pow(abs(sin(position * .pi * 2)), 1.4)
+        let loudness = min(1, Double(level) * 1.6)
+        let ripple = 0.72 + 0.28 * sin(time * 7 + Double(index) * 0.9)
+        return 5 + (maxHeight - 5) * CGFloat(shape * (0.18 + 0.82 * loudness) * ripple)
     }
 }
 #endif

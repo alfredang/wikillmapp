@@ -140,8 +140,8 @@ partner and strengthen it until it can be built:
 - Tabs: **Claude Code** (`claude --dangerously-skip-permissions --model claude-opus-5-5 --effort
   high`, resumes with `--continue`),
   **Codex**, **Terminal** — all started in the library root so `CLAUDE.md` applies.
-- **Voice notes (WhatsApp / Telegram style):** `VoiceNote.swift` puts a bar under the agent's
-  terminal. Hold the mic (or the right ⌥ key) to talk, release to send; slide left to cancel; slide
+- **Voice notes (WhatsApp / Telegram style):** `VoiceNote.swift` puts LahLah Voice's white pill (ringed mic, live wave) under the agent's
+  terminal. Hold the mic (or the right ⌥ key, a global hotkey that works in any app and needs Accessibility) to talk, release to send; slide left to cancel; slide
   up or tap for hands-free with a Send button. Audio (16 kHz mono via `AVAudioEngine`) is
   transcribed on the Mac by WhisperKit (`argmax-oss-swift`, model `large-v3-v20240930_626MB`,
   stored in `~/Library/Application Support/Wiki LLM/Whisper`, not iCloud), with a prompt of the

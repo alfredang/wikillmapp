@@ -320,19 +320,25 @@ struct TopicsRootView: View {
 
     /// Library location, pinned under the sidebar like Planner's sync row.
     private var libraryFooter: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "folder").font(.system(size: 11)).foregroundStyle(.secondary)
-            Text(store.rootURL?.path(percentEncoded: false).replacingOccurrences(of: NSHomeDirectory(), with: "~") ?? "No library")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 0)
-            Button { store.requestOpenVault() } label: {
-                Image(systemName: "arrow.left.arrow.right").font(.system(size: 10))
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "folder").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(store.rootURL?.path(percentEncoded: false).replacingOccurrences(of: NSHomeDirectory(), with: "~") ?? "No library")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 0)
+                Button { store.requestOpenVault() } label: {
+                    Image(systemName: "arrow.left.arrow.right").font(.system(size: 10))
+                }
+                .buttonStyle(.borderless)
+                .help("Open another library folder (⌘O)")
             }
-            .buttonStyle(.borderless)
-            .help("Open another library folder (⌘O)")
+            Text("Wiki LLM \(Bundle.main.appVersion)")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
+                .help("App version (build)")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)

@@ -12,12 +12,7 @@ struct AboutView: View {
 
     private let developerURL = URL(string: "https://www.tertiaryinfotech.com")!
 
-    private var versionString: String {
-        let i = Bundle.main.infoDictionary
-        let s = i?["CFBundleShortVersionString"] as? String ?? "1.0"
-        let b = i?["CFBundleVersion"] as? String ?? "1"
-        return "\(s) (\(b))"
-    }
+    private var versionString: String { Bundle.main.appVersion }
 
     var body: some View {
         ScrollView {
@@ -70,5 +65,14 @@ struct AboutView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Theme.background)
+    }
+}
+
+extension Bundle {
+    /// "1.1 (3)": the marketing version and build, shown in About and under the sidebar.
+    var appVersion: String {
+        let s = infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let b = infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        return "\(s) (\(b))"
     }
 }
