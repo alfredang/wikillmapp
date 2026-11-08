@@ -624,6 +624,26 @@ final class VaultStore: ObservableObject {
         FSEventStreamSetDispatchQueue(stream, DispatchQueue.main)
         FSEventStreamStart(stream)
         fsStream = stream
+        consumeOpenRequest()
+    }
+
+    /// The agent's way to show a page: it writes a library-relative path (e.g.
+    /// `CCAR-F/index.html`) to `.claude/open.nosync`, the reverse of `viewing.nosync`. The app
+    /// selects that page and deletes the request. Checked on every folder change and at launch.
+    func consumeOpenRequest() {
+        guard let root = rootURL else { return }
+        let request = root.appendingPathComponent(".claude/open.nosync")
+        guard let text = try? String(contentsOf: request, encoding: .utf8) else { return }
+        try? FileManager.default.removeItem(at: request)
+        let line = text.split(whereSeparator: \.isNewline).first
+            .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+        guard !line.isEmpty, !line.contains("..") else { return }
+        var target = root.appendingPathComponent(line).standardizedFileURL
+        guard target.path.hasPrefix(root.standardizedFileURL.path + "/") else { return }
+        // A folder's page is its index.html, but the sidebar selects the folder itself.
+        if target.lastPathComponent == TopicLibrary.indexFile { target = target.deletingLastPathComponent() }
+        guard FileManager.default.fileExists(atPath: target.path) else { return }
+        selectedFileURL = target
     }
 
     private func stopWatching() {
@@ -637,7 +657,10 @@ final class VaultStore: ObservableObject {
     /// Debounce rapid change bursts into a single refresh.
     func scheduleAutoRefresh() {
         autoRefreshWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.refresh() }
+        let work = DispatchWorkItem { [weak self] in
+            self?.refresh()
+            self?.consumeOpenRequest()
+        }
         autoRefreshWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
